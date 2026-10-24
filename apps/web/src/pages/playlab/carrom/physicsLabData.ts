@@ -19,7 +19,7 @@ export const NEWTON_LAWS_CONCEPTS: PhysicsConcept[] = [
     id: 'first_law',
     title: "Newton's First Law (Law of Inertia)",
     law: 1,
-    formula: '\\sum \\vec{F} = 0 \\implies \\vec{v} = \\text{constant}',
+    formula: 'ΣF = 0 ⟹ v = constant',
     description:
       'An object at rest stays at rest, and an object in motion continues in a straight line at constant velocity unless acted upon by a net external force.',
     carromApplication:
@@ -30,7 +30,7 @@ export const NEWTON_LAWS_CONCEPTS: PhysicsConcept[] = [
     id: 'second_law',
     title: "Newton's Second Law (Force & Momentum)",
     law: 2,
-    formula: '\\vec{F} = m\\vec{a} = \\frac{\\Delta \\vec{p}}{\\Delta t}, \\quad \\vec{J} = \\int \\vec{F}\\,dt = \\Delta \\vec{p}',
+    formula: 'F = m · a = Δp / Δt,   J = Δp',
     description:
       'The acceleration of an object is directly proportional to the net force acting on it and inversely proportional to its mass. Impulse (force over time) equals the change in momentum.',
     carromApplication:
@@ -41,7 +41,7 @@ export const NEWTON_LAWS_CONCEPTS: PhysicsConcept[] = [
     id: 'third_law',
     title: "Newton's Third Law (Action-Reaction)",
     law: 3,
-    formula: '\\vec{F}_{\\text{striker} \\to \\text{coin}} = -\\vec{F}_{\\text{coin} \\to \\text{striker}}',
+    formula: 'F(action) = -F(reaction)',
     description:
       'For every action force, there is an equal in magnitude and opposite in direction reaction force acting on the interacting bodies.',
     carromApplication:
@@ -52,7 +52,7 @@ export const NEWTON_LAWS_CONCEPTS: PhysicsConcept[] = [
 
 export const COEFFICIENT_OF_RESTITUTION_INFO = {
   title: 'Coefficient of Restitution (e)',
-  formula: 'e = \\frac{v_2 - v_1}{u_1 - u_2}',
+  formula: 'e = (v₂ - v₁) / (u₁ - u₂)',
   description:
     'Measures the elasticity of collisions. e = 1 is perfectly elastic (no kinetic energy lost), while e = 0 is perfectly inelastic (bodies stick together). Carrom wood cushions typically have e ≈ 0.80 to 0.88.',
 };
@@ -96,7 +96,7 @@ export function generateShotPhysicsExplanation(telemetry: ShotTelemetry): {
   }
 
   return {
-    explanation: `Newton's 3rd Law: Striker and target coin exerted equal and opposite contact forces during impact. Because the striker has higher mass than the coin, the coin experienced greater acceleration ($a = F/m$).`,
+    explanation: `Newton's 3rd Law: Striker and target coin exerted equal and opposite contact forces during impact. Because the striker has higher mass than the coin, the coin experienced greater acceleration (a = F/m).`,
     law: 3,
   };
 }

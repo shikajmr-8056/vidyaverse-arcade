@@ -48,7 +48,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'first_law',
     tabLabel: "Newton's 1st Law",
     title: "Newton's First Law (Law of Inertia)",
-    formula: '\\sum \\vec{F} = 0 \\implies \\vec{v} = \\text{constant}',
+    formula: 'ΣF = 0 ⟹ v = constant',
     summary:
       'Coins remain at rest until struck. Once sliding, they continue at constant velocity unless opposing friction slows them.',
     carromApplication:
@@ -60,7 +60,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'second_law',
     tabLabel: "Newton's 2nd Law",
     title: "Newton's Second Law (Force & Impulse)",
-    formula: '\\vec{F} = m\\vec{a} = \\frac{\\Delta \\vec{p}}{\\Delta t}',
+    formula: 'F = m · a = Δp / Δt',
     summary:
       'Acceleration is directly proportional to applied force and inversely proportional to mass. Impulse equals momentum change.',
     carromApplication:
@@ -72,7 +72,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'third_law',
     tabLabel: "Newton's 3rd Law",
     title: "Newton's Third Law (Action-Reaction)",
-    formula: '\\vec{F}_{\\text{striker} \\to \\text{coin}} = -\\vec{F}_{\\text{coin} \\to \\text{striker}}',
+    formula: 'F(action) = -F(reaction)',
     summary:
       'Every action force exerts an equal and opposite reaction force between colliding bodies.',
     carromApplication:
@@ -84,7 +84,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'momentum',
     tabLabel: 'Momentum',
     title: 'Conservation of Linear Momentum',
-    formula: '\\sum \\vec{p}_{\\text{before}} = \\sum \\vec{p}_{\\text{after}}',
+    formula: 'p = m · v  (Σp_initial = Σp_final)',
     summary:
       'Total momentum (p = mv) of the striker-coin system remains conserved across all internal collisions on the board.',
     carromApplication:
@@ -96,7 +96,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'friction',
     tabLabel: 'Friction',
     title: 'Kinetic Friction & Drag Force',
-    formula: 'f_k = \\mu_k N, \\quad \\vec{F}_{\\text{drag}} = -b\\vec{v}',
+    formula: 'f_k = μ_k · N',
     summary:
       'Friction opposes sliding motion, gradually converting the kinetic energy of pieces into microscopic thermal energy.',
     carromApplication:
@@ -108,7 +108,7 @@ const PHYSICS_CONCEPTS: PhysicsConceptItem[] = [
     key: 'collisions',
     tabLabel: 'Collisions',
     title: 'Elastic Collisions & Coefficient of Restitution',
-    formula: 'e = \\frac{v_2 - v_1}{u_1 - u_2} \\approx 0.88',
+    formula: 'e = (v₂ - v₁) / (u₁ - u₂) ≈ 0.88',
     summary:
       'The coefficient of restitution (e) determines elasticity. e=1 is perfectly elastic; carrom cushions typically have e ≈ 0.85.',
     carromApplication:
