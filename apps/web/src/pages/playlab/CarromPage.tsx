@@ -101,8 +101,8 @@ export const CarromPage: React.FC = () => {
     winner: null,
     lastShotTelemetry: null,
     config: {
-      frictionAir: 0.016,
-      restitution: 0.85,
+      frictionAir: 0.013,
+      restitution: 0.88,
       strikerMass: 8.0,
       coinMass: 2.0,
       powerMultiplier: 1.0,
@@ -211,8 +211,8 @@ export const CarromPage: React.FC = () => {
       }
 
       const initialConfig: CarromPhysicsConfig = {
-        frictionAir: 0.016,
-        restitution: 0.85,
+        frictionAir: 0.013,
+        restitution: 0.88,
         strikerMass: 8.0,
         coinMass: 2.0,
         powerMultiplier: 1.0,

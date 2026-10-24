@@ -329,9 +329,9 @@ export class CarromPhysicsEngine {
     this.pocketedThisShot = [];
 
     // Map 0..100 power to calibrated Matter.js force impulse
-    // Striker mass is ~8kg. Max impulse ~0.08
+    // Striker mass is ~8kg. Max impulse calibrated for crisp, fast, powerful strikes (~3.8x increase)
     const clampedPower = Math.max(5, Math.min(100, powerPercent));
-    const maxImpulse = 0.085 * this.config.powerMultiplier;
+    const maxImpulse = 0.32 * this.config.powerMultiplier;
     const impulseMagnitude = (clampedPower / 100) * maxImpulse;
 
     const forceVector = {
@@ -489,7 +489,7 @@ export class CarromPhysicsEngine {
     const dirY = Math.sin(angleRad);
 
     // Max trace distance proportional to power
-    const maxDist = 120 + (powerPercent / 100) * 450;
+    const maxDist = 160 + (powerPercent / 100) * 620;
     let currentX = startX;
     let currentY = startY;
     let hitCoin: { x: number; y: number; label: string } | undefined;
