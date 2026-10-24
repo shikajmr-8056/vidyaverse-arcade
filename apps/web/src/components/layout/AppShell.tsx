@@ -53,7 +53,7 @@ export function AppShell() {
           className={`flex-1 ${
             isWorkstation
               ? 'overflow-hidden flex flex-col p-0'
-              : 'overflow-y-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6'
+              : 'overflow-y-auto max-w-7xl mx-auto w-full px-3 sm:px-6 pt-1 sm:pt-2 pb-6'
           }`}
           id="main-content"
         >
