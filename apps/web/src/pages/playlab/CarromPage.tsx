@@ -338,9 +338,10 @@ export const CarromPage: React.FC = () => {
 
   // ---------------------------------------------------------
   // GAME LOOP TICK: POCKETS, SETTLING & TURN RESOLUTION
+  // (Runs ONLY during physics simulation to keep UI 100% idle & responsive)
   // ---------------------------------------------------------
   useEffect(() => {
-    if (viewState !== 'match') return;
+    if (viewState !== 'match' || !isShotInMotion) return;
 
     let animId: number;
 
@@ -355,11 +356,13 @@ export const CarromPage: React.FC = () => {
       const { isStillMoving, pocketedThisTick, strikerSpeed: currentSpeed, collisionCount } =
         engine.updatePocketsAndSettling();
 
-      setStrikerSpeed(currentSpeed);
+      // Only update state if speed changes noticeably to avoid React re-render thrashing
+      setStrikerSpeed((prev) => (Math.abs(prev - currentSpeed) > 0.08 ? currentSpeed : prev));
 
       // Settle shot when all pieces stop moving
-      if (isShotInMotion && !isStillMoving) {
+      if (!isStillMoving) {
         setIsShotInMotion(false);
+        setStrikerSpeed(0);
 
         // Gather all pocketed coins in this shot
         const pocketedCoins = engine.getPocketedInLastShot();

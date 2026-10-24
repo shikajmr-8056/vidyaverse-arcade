@@ -1,5 +1,6 @@
 // =========================================================
 // VIDYAVERSE NEWTON'S CARROM — HIGH-FIDELITY CANVAS BOARD
+// Decoupled 60FPS Render Engine with Zero-Latency Pointer Tracking
 // =========================================================
 
 import React, { useRef, useEffect, useCallback } from 'react';
@@ -28,6 +29,8 @@ export interface CarromBoardViewProps {
   aimGuideEnabled?: boolean;
 }
 
+type DragMode = 'none' | 'striker_positioning' | 'aiming' | 'slingshot';
+
 export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
   physicsEngine,
   activePlayer,
@@ -44,11 +47,77 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // ---------------------------------------------------------
+  // DECOUPLED REFS FOR ZERO-LATENCY 60FPS INTERACTION
+  // ---------------------------------------------------------
+  const physicsEngineRef = useRef<CarromPhysicsEngine | null>(physicsEngine);
+  const activePlayerRef = useRef<PlayerSlot>(activePlayer);
+  const isShotInMotionRef = useRef<boolean>(isShotInMotion);
+  const strikerBaselinePosRef = useRef<number>(strikerBaselinePos);
+  const aimAngleRadRef = useRef<number>(aimAngleRad);
+  const shotPowerRef = useRef<number>(shotPower);
+  const aimGuideEnabledRef = useRef<boolean>(aimGuideEnabled);
+
   // Interaction State Refs
-  const isDraggingStrikerRef = useRef(false);
-  const isDraggingAimRef = useRef(false);
-  const dragStartPointRef = useRef<{ x: number; y: number } | null>(null);
-  const currentDragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragModeRef = useRef<DragMode>('none');
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const currentPointerPosRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const syncRafRef = useRef<number | null>(null);
+
+  // Synchronize incoming props to refs immediately
+  useEffect(() => {
+    physicsEngineRef.current = physicsEngine;
+  }, [physicsEngine]);
+
+  useEffect(() => {
+    activePlayerRef.current = activePlayer;
+  }, [activePlayer]);
+
+  useEffect(() => {
+    isShotInMotionRef.current = isShotInMotion;
+  }, [isShotInMotion]);
+
+  useEffect(() => {
+    strikerBaselinePosRef.current = strikerBaselinePos;
+  }, [strikerBaselinePos]);
+
+  useEffect(() => {
+    aimAngleRadRef.current = aimAngleRad;
+  }, [aimAngleRad]);
+
+  useEffect(() => {
+    shotPowerRef.current = shotPower;
+  }, [shotPower]);
+
+  useEffect(() => {
+    aimGuideEnabledRef.current = aimGuideEnabled;
+  }, [aimGuideEnabled]);
+
+  // ---------------------------------------------------------
+  // THROTTLED REACT STATE DISPATCH
+  // Batches state updates into 1 per animation frame to prevent
+  // heavy parent re-renders from bottlenecking input tracking
+  // ---------------------------------------------------------
+  const scheduleReactSync = useCallback(() => {
+    if (syncRafRef.current !== null) return;
+    syncRafRef.current = requestAnimationFrame(() => {
+      syncRafRef.current = null;
+      onBaselinePosChange(strikerBaselinePosRef.current);
+      onAimAngleChange(aimAngleRadRef.current);
+      onShotPowerChange(shotPowerRef.current);
+    });
+  }, [onBaselinePosChange, onAimAngleChange, onShotPowerChange]);
+
+  const flushReactSync = useCallback(() => {
+    if (syncRafRef.current !== null) {
+      cancelAnimationFrame(syncRafRef.current);
+      syncRafRef.current = null;
+    }
+    onBaselinePosChange(strikerBaselinePosRef.current);
+    onAimAngleChange(aimAngleRadRef.current);
+    onShotPowerChange(shotPowerRef.current);
+  }, [onBaselinePosChange, onAimAngleChange, onShotPowerChange]);
 
   // ---------------------------------------------------------
   // CONVERT SCREEN COORDINATES TO LOGICAL 800x800 COORDINATES
@@ -66,89 +135,180 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
   }, []);
 
   // ---------------------------------------------------------
-  // TOUCH & MOUSE HANDLERS FOR BASELINE DRAG & SLINGSHOT AIM
+  // POINTER EVENT HANDLERS (WITH POINTER CAPTURE)
   // ---------------------------------------------------------
-  const handlePointerDown = (clientX: number, clientY: number) => {
-    if (isShotInMotion || activePlayer.isBot || !physicsEngine?.striker) return;
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const engine = physicsEngineRef.current;
+    const player = activePlayerRef.current;
+    if (isShotInMotionRef.current || player.isBot || !engine?.striker) return;
 
-    const coords = getLogicalCoords(clientX, clientY);
-    const strikerPos = physicsEngine.striker.position;
+    // Capture pointer so dragging continues seamlessly even outside the canvas
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointerIdRef.current = e.pointerId;
+    } catch {
+      // Fallback
+    }
+
+    const coords = getLogicalCoords(e.clientX, e.clientY);
+    pointerDownPosRef.current = coords;
+    currentPointerPosRef.current = coords;
+
+    const striker = engine.striker;
+    const strikerPos = striker.position;
     const distToStriker = Math.hypot(coords.x - strikerPos.x, coords.y - strikerPos.y);
 
-    // 1. If clicking directly on striker, start Drag-To-Shoot (pull back)
-    if (distToStriker <= STRIKER_RADIUS + 15) {
-      isDraggingAimRef.current = true;
-      dragStartPointRef.current = coords;
-      currentDragPointRef.current = coords;
+    const baseline = BASELINE_CONFIGS[player.side];
+    const isHorizontal = player.side === 'south' || player.side === 'north';
+
+    // Baseline Corridor Check
+    let inBaselineBand = false;
+    if (player.side === 'south') {
+      inBaselineBand =
+        coords.y >= 590 &&
+        coords.y <= 695 &&
+        coords.x >= baseline.minTravel - 35 &&
+        coords.x <= baseline.maxTravel + 35;
+    } else if (player.side === 'north') {
+      inBaselineBand =
+        coords.y >= 105 &&
+        coords.y <= 210 &&
+        coords.x >= baseline.minTravel - 35 &&
+        coords.x <= baseline.maxTravel + 35;
+    } else if (player.side === 'west') {
+      inBaselineBand =
+        coords.x >= 105 &&
+        coords.x <= 210 &&
+        coords.y >= baseline.minTravel - 35 &&
+        coords.y <= baseline.maxTravel + 35;
+    } else if (player.side === 'east') {
+      inBaselineBand =
+        coords.x >= 590 &&
+        coords.x <= 695 &&
+        coords.y >= baseline.minTravel - 35 &&
+        coords.y <= baseline.maxTravel + 35;
+    }
+
+    // 1. STRIKER BASELINE POSITIONING
+    // If touching the striker directly OR touching anywhere in the baseline slider track:
+    if (distToStriker <= STRIKER_RADIUS + 22 || inBaselineBand) {
+      dragModeRef.current = 'striker_positioning';
+      const travelCoord = isHorizontal ? coords.x : coords.y;
+      const clamped = Math.max(baseline.minTravel, Math.min(baseline.maxTravel, travelCoord));
+      strikerBaselinePosRef.current = clamped;
+      engine.setStrikerBaselinePosition(player.side, clamped);
+      scheduleReactSync();
       return;
     }
 
-    // 2. If clicking on baseline area, move striker along baseline
-    const baseline = BASELINE_CONFIGS[activePlayer.side];
-    let distToBaseline = Math.abs(coords.y - baseline.fixedCoordinate);
-    if (activePlayer.side === 'west' || activePlayer.side === 'east') {
-      distToBaseline = Math.abs(coords.x - baseline.fixedCoordinate);
-    }
-
-    if (distToBaseline <= 35) {
-      isDraggingStrikerRef.current = true;
-      const travelCoord = activePlayer.side === 'west' || activePlayer.side === 'east' ? coords.y : coords.x;
-      onBaselinePosChange(travelCoord);
-      return;
-    }
-
-    // 3. If clicking anywhere else on board, orient aim angle towards that point
+    // 2. DIRECT AIMING
+    // Touching anywhere else on the board aims immediately towards that point
+    dragModeRef.current = 'aiming';
     const angle = Math.atan2(coords.y - strikerPos.y, coords.x - strikerPos.x);
-    onAimAngleChange(angle);
+    aimAngleRadRef.current = angle;
+    scheduleReactSync();
   };
 
-  const handlePointerMove = (clientX: number, clientY: number) => {
-    if (isShotInMotion || activePlayer.isBot || !physicsEngine?.striker) return;
+  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const engine = physicsEngineRef.current;
+    const player = activePlayerRef.current;
+    if (isShotInMotionRef.current || player.isBot || !engine?.striker) return;
+    if (dragModeRef.current === 'none' || !pointerDownPosRef.current) return;
 
-    const coords = getLogicalCoords(clientX, clientY);
+    const coords = getLogicalCoords(e.clientX, e.clientY);
+    currentPointerPosRef.current = coords;
+    const striker = engine.striker;
+    const strikerPos = striker.position;
+    const baseline = BASELINE_CONFIGS[player.side];
+    const isHorizontal = player.side === 'south' || player.side === 'north';
 
-    if (isDraggingStrikerRef.current) {
-      const travelCoord = activePlayer.side === 'west' || activePlayer.side === 'east' ? coords.y : coords.x;
-      onBaselinePosChange(travelCoord);
-    } else if (isDraggingAimRef.current && dragStartPointRef.current) {
-      currentDragPointRef.current = coords;
-      const dx = coords.x - dragStartPointRef.current.x;
-      const dy = coords.y - dragStartPointRef.current.y;
-      const pullDist = Math.hypot(dx, dy);
+    if (dragModeRef.current === 'striker_positioning') {
+      // Check if player pulls backwards away from baseline to engage slingshot
+      const pullAway =
+        player.side === 'south'
+          ? coords.y - baseline.fixedCoordinate
+          : player.side === 'north'
+          ? baseline.fixedCoordinate - coords.y
+          : player.side === 'west'
+          ? baseline.fixedCoordinate - coords.x
+          : coords.x - baseline.fixedCoordinate;
 
-      // Invert pull vector for slingshot / cue pull
-      const angle = Math.atan2(-dy, -dx);
-      onAimAngleChange(angle);
-
-      // Calibrate drag distance (0..160px) to power (10..100%)
-      const power = Math.min(100, Math.max(10, Math.round((pullDist / 140) * 100)));
-      onShotPowerChange(power);
-    }
-  };
-
-  const handlePointerUp = () => {
-    if (isDraggingStrikerRef.current) {
-      isDraggingStrikerRef.current = false;
-    }
-
-    if (isDraggingAimRef.current && dragStartPointRef.current && currentDragPointRef.current) {
-      const dx = currentDragPointRef.current.x - dragStartPointRef.current.x;
-      const dy = currentDragPointRef.current.y - dragStartPointRef.current.y;
-      const pullDist = Math.hypot(dx, dy);
-
-      isDraggingAimRef.current = false;
-      dragStartPointRef.current = null;
-      currentDragPointRef.current = null;
-
-      // If dragged sufficiently (> 20px), execute the shot!
-      if (pullDist >= 20) {
-        onExecuteShot(aimAngleRad, shotPower);
+      if (pullAway > 42) {
+        // Transition seamlessly to Slingshot Power Cue
+        dragModeRef.current = 'slingshot';
+      } else {
+        // Instantaneous, frictionless horizontal baseline tracking
+        const travelCoord = isHorizontal ? coords.x : coords.y;
+        const clamped = Math.max(baseline.minTravel, Math.min(baseline.maxTravel, travelCoord));
+        strikerBaselinePosRef.current = clamped;
+        engine.setStrikerBaselinePosition(player.side, clamped);
+        scheduleReactSync();
+        return;
       }
     }
+
+    if (dragModeRef.current === 'slingshot') {
+      // Slingshot: pull vector away from striker
+      const dx = strikerPos.x - coords.x;
+      const dy = strikerPos.y - coords.y;
+      const pullDist = Math.hypot(dx, dy);
+
+      if (pullDist > 8) {
+        const angle = Math.atan2(dy, dx);
+        aimAngleRadRef.current = angle;
+
+        // Calibrate pull distance to power (15% to 100%)
+        const power = Math.min(100, Math.max(15, Math.round((pullDist / 135) * 100)));
+        shotPowerRef.current = power;
+        scheduleReactSync();
+      }
+      return;
+    }
+
+    if (dragModeRef.current === 'aiming') {
+      // Direct aiming: orient towards pointer position with zero delay
+      const angle = Math.atan2(coords.y - strikerPos.y, coords.x - strikerPos.x);
+      aimAngleRadRef.current = angle;
+      scheduleReactSync();
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointerIdRef.current !== null) {
+      try {
+        e.currentTarget.releasePointerCapture(pointerIdRef.current);
+      } catch {
+        // Fallback
+      }
+      pointerIdRef.current = null;
+    }
+
+    const currentMode = dragModeRef.current;
+    dragModeRef.current = 'none';
+
+    // Flush latest exact coordinates and angles to React controls
+    flushReactSync();
+
+    // If releasing a slingshot pull with sufficient distance (> 28px), execute shot
+    if (currentMode === 'slingshot' && pointerDownPosRef.current && currentPointerPosRef.current) {
+      const engine = physicsEngineRef.current;
+      if (engine?.striker) {
+        const dx = engine.striker.position.x - currentPointerPosRef.current.x;
+        const dy = engine.striker.position.y - currentPointerPosRef.current.y;
+        const pullDist = Math.hypot(dx, dy);
+
+        if (pullDist >= 28) {
+          onExecuteShot(aimAngleRadRef.current, shotPowerRef.current);
+        }
+      }
+    }
+
+    pointerDownPosRef.current = null;
+    currentPointerPosRef.current = null;
   };
 
   // ---------------------------------------------------------
-  // HIGH-RESOLUTION CANVAS RENDER LOOP (60FPS)
+  // HIGH-RESOLUTION CANVAS RENDER LOOP (UNINTERRUPTED 60FPS)
   // ---------------------------------------------------------
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -159,6 +319,14 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
     let animId: number;
 
     const render = () => {
+      const engine = physicsEngineRef.current;
+      const player = activePlayerRef.current;
+      const isShotInMotion = isShotInMotionRef.current;
+      const aimAngle = aimAngleRadRef.current;
+      const power = shotPowerRef.current;
+      const aimGuideEnabled = aimGuideEnabledRef.current;
+      const currentMode = dragModeRef.current;
+
       ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
 
       // 1. MAHOGANY WOODEN OUTER FRAME WITH BEVEL
@@ -175,8 +343,8 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
       ctx.lineWidth = 2;
       ctx.strokeRect(38, 38, BOARD_SIZE - 76, BOARD_SIZE - 76);
 
-      // 2. LACQUER PLAYING SURFACE (Warm polished plywood)
-      ctx.fillStyle = '#fef3c7'; // Warm polished ivory
+      // 2. LACQUER PLAYING SURFACE (Warm polished ivory plywood)
+      ctx.fillStyle = '#fef3c7'; // Polished ivory
       ctx.fillRect(40, 40, BOARD_SIZE - 80, BOARD_SIZE - 80);
 
       // Surface border line
@@ -184,7 +352,7 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
       ctx.lineWidth = 2;
       ctx.strokeRect(40, 40, BOARD_SIZE - 80, BOARD_SIZE - 80);
 
-      // 3. FOUR CORNER POCKETS (Deep holes with mesh lines)
+      // 3. FOUR CORNER POCKETS (Deep holes with mesh nets)
       POCKETS.forEach((pocket) => {
         // Deep shadow
         ctx.beginPath();
@@ -241,7 +409,7 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
       // 5. FOUR BASELINES & CIRCLES (South, North, West, East)
       const drawHorizontalBaseline = (yFixed: number, isActive: boolean) => {
         ctx.strokeStyle = isActive ? '#dc2626' : '#991b1b';
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = isActive ? 2.2 : 1.8;
 
         // Double lines
         ctx.beginPath();
@@ -270,7 +438,7 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
 
       const drawVerticalBaseline = (xFixed: number, isActive: boolean) => {
         ctx.strokeStyle = isActive ? '#dc2626' : '#991b1b';
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = isActive ? 2.2 : 1.8;
 
         // Double lines
         ctx.beginPath();
@@ -298,10 +466,10 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
       };
 
       // Draw all 4 standard baselines
-      drawHorizontalBaseline(630, activePlayer.side === 'south');
-      drawHorizontalBaseline(170, activePlayer.side === 'north');
-      drawVerticalBaseline(170, activePlayer.side === 'west');
-      drawVerticalBaseline(630, activePlayer.side === 'east');
+      drawHorizontalBaseline(630, player.side === 'south');
+      drawHorizontalBaseline(170, player.side === 'north');
+      drawVerticalBaseline(170, player.side === 'west');
+      drawVerticalBaseline(630, player.side === 'east');
 
       // 6. CENTRAL MANDALA & CONCENTRIC CIRCLES
       ctx.strokeStyle = '#b45309';
@@ -334,9 +502,71 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
       ctx.fillStyle = '#dc2626';
       ctx.fill();
 
-      // 7. MATTER.JS BODIES (Coins & Striker)
-      if (physicsEngine?.engine) {
-        const bodies = Matter.Composite.allBodies(physicsEngine.engine.world);
+      // 7. DEDICATED ON-BOARD BASELINE SLIDER TRACK (CARROM KING STYLE)
+      // Visual feedback guide for silky smooth striker positioning
+      if (!isShotInMotion && !player.isBot && engine?.striker) {
+        const strikerPos = engine.striker.position;
+        const isHorizontal = player.side === 'south' || player.side === 'north';
+
+        if (isHorizontal) {
+          const trackY = player.side === 'south' ? 665 : 135;
+
+          // Track Background Line
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(196, trackY - 3, 408, 6, 3);
+          ctx.fillStyle = 'rgba(180, 83, 9, 0.2)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(180, 83, 9, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Tick marks at endpoints & center
+          [200, 400, 600].forEach((tx) => {
+            ctx.beginPath();
+            ctx.moveTo(tx, trackY - 6);
+            ctx.lineTo(tx, trackY + 6);
+            ctx.strokeStyle = '#b45309';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          });
+
+          // Connecting indicator line from slider track to striker
+          ctx.beginPath();
+          ctx.setLineDash([3, 3]);
+          ctx.moveTo(strikerPos.x, trackY);
+          ctx.lineTo(strikerPos.x, strikerPos.y + (player.side === 'south' ? 18 : -18));
+          ctx.strokeStyle = currentMode === 'striker_positioning' ? '#0284c7' : 'rgba(180, 83, 9, 0.6)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Glowing Slider Grip Thumb
+          ctx.beginPath();
+          ctx.arc(strikerPos.x, trackY, 7.5, 0, Math.PI * 2);
+          ctx.fillStyle = currentMode === 'striker_positioning' ? '#38bdf8' : '#fef3c7';
+          ctx.fill();
+          ctx.strokeStyle = '#0284c7';
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+
+          // Subtle helper arrows
+          ctx.fillStyle = 'rgba(180, 83, 9, 0.65)';
+          ctx.font = 'bold 9px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(
+            '◀ SLIDE STRIKER ▶',
+            400,
+            player.side === 'south' ? trackY + 14 : trackY - 14
+          );
+          ctx.restore();
+        }
+      }
+
+      // 8. MATTER.JS BODIES (Coins & Striker)
+      if (engine?.engine) {
+        const bodies = Matter.Composite.allBodies(engine.engine.world);
 
         bodies.forEach((body) => {
           if (body.isStatic) return;
@@ -347,16 +577,24 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
 
           // 3D Drop Shadow
           ctx.beginPath();
-          ctx.arc(2.5, 3.5, (body.circleRadius || COIN_RADIUS), 0, Math.PI * 2);
+          ctx.arc(2.5, 3.5, body.circleRadius || COIN_RADIUS, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
           ctx.fill();
 
           if (body.label === 'striker') {
-            // STRIKER: Acrylic translucent disc with concentric laser rings
+            // STRIKER: Translucent acrylic disc with laser rings
+            if (currentMode === 'striker_positioning') {
+              // Active positioning halo glow
+              ctx.shadowColor = '#38bdf8';
+              ctx.shadowBlur = 14;
+            }
+
             ctx.beginPath();
             ctx.arc(0, 0, STRIKER_RADIUS, 0, Math.PI * 2);
             ctx.fillStyle = '#0284c7'; // Electric Cyan
             ctx.fill();
+            ctx.shadowBlur = 0; // Reset shadow
+
             ctx.strokeStyle = '#e0f2fe';
             ctx.lineWidth = 2.5;
             ctx.stroke();
@@ -426,24 +664,26 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
         });
       }
 
-      // 8. AIMING GUIDE & TRAJECTORY PREDICTION
+      // 9. AIMING GUIDE, TRAJECTORY & SLINGSHOT POWER VISUALS
       if (
         aimGuideEnabled &&
         !isShotInMotion &&
-        !activePlayer.isBot &&
-        physicsEngine?.striker
+        !player.isBot &&
+        engine?.striker
       ) {
-        const sx = physicsEngine.striker.position.x;
-        const sy = physicsEngine.striker.position.y;
+        const sx = engine.striker.position.x;
+        const sy = engine.striker.position.y;
 
-        const trajectory = physicsEngine.calculateAimTrajectory(
+        const trajectory = engine.calculateAimTrajectory(
           sx,
           sy,
-          aimAngleRad,
-          shotPower
+          aimAngle,
+          power
         );
 
         ctx.save();
+
+        // A. Primary Aim Trajectory Line
         ctx.setLineDash([7, 5]);
         ctx.strokeStyle = '#0284c7';
         ctx.lineWidth = 2.5;
@@ -454,17 +694,85 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
           ctx.lineTo(pt.x, pt.y);
         });
         ctx.stroke();
+        ctx.setLineDash([]);
 
-        // Endpoint marker
+        // B. Endpoint Ghost Striker / Hit Marker
         const lastPt = trajectory.path[trajectory.path.length - 1];
         if (lastPt) {
-          ctx.setLineDash([]);
+          if (trajectory.hitCoin) {
+            // Ghost striker at impact position
+            ctx.beginPath();
+            ctx.arc(lastPt.x, lastPt.y, STRIKER_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(2, 132, 199, 0.18)';
+            ctx.fill();
+            ctx.strokeStyle = '#0284c7';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Coin Deflection Indicator Arrow
+            const coinX = trajectory.hitCoin.x;
+            const coinY = trajectory.hitCoin.y;
+            const defAngle = Math.atan2(coinY - lastPt.y, coinX - lastPt.x);
+            const defLen = 35;
+            const defTargetX = coinX + Math.cos(defAngle) * defLen;
+            const defTargetY = coinY + Math.sin(defAngle) * defLen;
+
+            ctx.beginPath();
+            ctx.moveTo(coinX, coinY);
+            ctx.lineTo(defTargetX, defTargetY);
+            ctx.strokeStyle = '#f59e0b'; // Amber warning arrow
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            // Arrow Head
+            ctx.beginPath();
+            ctx.arc(defTargetX, defTargetY, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fill();
+          } else {
+            // Wall rebound or maximum reach dot
+            ctx.beginPath();
+            ctx.arc(lastPt.x, lastPt.y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#38bdf8';
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+
+        // C. Slingshot Elastic Pull String & Power Arc
+        if (currentMode === 'slingshot' && currentPointerPosRef.current) {
+          const dragPos = currentPointerPosRef.current;
+
+          // Elastic rubber band connecting striker to finger
           ctx.beginPath();
-          ctx.arc(lastPt.x, lastPt.y, 6, 0, Math.PI * 2);
-          ctx.fillStyle = trajectory.hitCoin ? '#f59e0b' : '#38bdf8';
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(dragPos.x, dragPos.y);
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // Pull release handle
+          ctx.beginPath();
+          ctx.arc(dragPos.x, dragPos.y, 8, 0, Math.PI * 2);
+          ctx.fillStyle = '#ef4444';
           ctx.fill();
           ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Dynamic Power Ring around striker
+          ctx.beginPath();
+          ctx.arc(
+            sx,
+            sy,
+            STRIKER_RADIUS + 8,
+            aimAngle - Math.PI / 3,
+            aimAngle - Math.PI / 3 + (Math.PI * 2 * (power / 100)) * (2 / 3)
+          );
+          ctx.strokeStyle = power > 75 ? '#ef4444' : power > 45 ? '#f59e0b' : '#10b981';
+          ctx.lineWidth = 3.5;
           ctx.stroke();
         }
 
@@ -476,7 +784,7 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, [physicsEngine, activePlayer, isShotInMotion, aimAngleRad, shotPower, aimGuideEnabled]);
+  }, []); // Run continuously at 60 FPS without tearing down on pointer movements!
 
   return (
     <div
@@ -488,19 +796,11 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
         ref={canvasRef}
         width={BOARD_SIZE}
         height={BOARD_SIZE}
-        onMouseDown={(e) => handlePointerDown(e.clientX, e.clientY)}
-        onMouseMove={(e) => handlePointerMove(e.clientX, e.clientY)}
-        onMouseUp={handlePointerUp}
-        onTouchStart={(e) => {
-          const t = e.touches[0];
-          if (t) handlePointerDown(t.clientX, t.clientY);
-        }}
-        onTouchMove={(e) => {
-          const t = e.touches[0];
-          if (t) handlePointerMove(t.clientX, t.clientY);
-        }}
-        onTouchEnd={handlePointerUp}
-        className="w-full h-full cursor-crosshair"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="w-full h-full cursor-crosshair touch-none"
       />
     </div>
   );
