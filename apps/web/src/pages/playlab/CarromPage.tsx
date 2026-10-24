@@ -1,5 +1,6 @@
 // =========================================================
 // VIDYAVERSE NEWTON'S CARROM — GAMEPLAY & PHYSICS LAB
+// Neatly arranged layout matching Math Ludo 3-Column Zero-Scroll
 // =========================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -9,14 +10,7 @@ import {
   RotateCcw,
   Volume2,
   VolumeX,
-  Sparkles,
-  Sliders,
-  Trophy,
-  Activity,
-  Layers,
-  HelpCircle,
 } from 'lucide-react';
-import { clsx } from 'clsx';
 import { useAuthStore } from '../../stores/authStore';
 import {
   CarromPlayMode,
@@ -41,11 +35,13 @@ import {
 import { generateShotPhysicsExplanation } from './carrom/physicsLabData';
 import { carromSocketClient } from './carrom/carromSocketClient';
 
+// Modular UI Components matching Math Ludo
 import { CarromSetupView } from './carrom/components/CarromSetupView';
 import { CarromBoardView } from './carrom/components/CarromBoardView';
+import { CarromTurnRail } from './carrom/components/CarromTurnRail';
+import { CarromPhysicsRail } from './carrom/components/CarromPhysicsRail';
 import { CarromControlsBar } from './carrom/components/CarromControlsBar';
-import { CarromScoreboard } from './carrom/components/CarromScoreboard';
-import { CarromPhysicsLabPanel } from './carrom/components/CarromPhysicsLabPanel';
+import { CarromReactions } from './carrom/components/CarromReactions';
 import { CarromVictoryModal } from './carrom/components/CarromVictoryModal';
 
 export const CarromPage: React.FC = () => {
@@ -61,14 +57,19 @@ export const CarromPage: React.FC = () => {
   const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('intermediate');
   const [targetScore, setTargetScore] = useState<number>(25);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => loadSoundPreference());
-  const [roomCode, setRoomCode] = useState<string>('CARROM');
-  const [hasSavedGame, setHasSavedGame] = useState<boolean>(() => !!loadCarromMatch());
+  const [hasSavedGame, setHasSavedGame] = useState<boolean>(false);
+  const [roomCode, setRoomCode] = useState<string>('ROOM88');
 
-  // Players Lineup
+  // Activity Log Ticker (matching Ludo Match Activity Log)
+  const [activityLog, setActivityLog] = useState<string[]>([
+    'Match initialized! South Base takes the opening strike.',
+  ]);
+
+  // Initial Player Slots
   const [players, setPlayers] = useState<PlayerSlot[]>([
     {
       id: 'p1',
-      name: user?.name || 'Player 1',
+      name: user?.name || 'Explorer',
       isBot: false,
       score: 0,
       coinsPocketed: { white: 0, black: 0, queen: 0 },
@@ -85,11 +86,29 @@ export const CarromPage: React.FC = () => {
       side: 'north',
       isActive: true,
     },
+    {
+      id: 'p3_bot',
+      name: 'East Base (Locked)',
+      isBot: true,
+      score: 0,
+      coinsPocketed: { white: 0, black: 0, queen: 0 },
+      side: 'east',
+      isActive: false,
+    },
+    {
+      id: 'p4_bot',
+      name: 'West Base (Locked)',
+      isBot: true,
+      score: 0,
+      coinsPocketed: { white: 0, black: 0, queen: 0 },
+      side: 'west',
+      isActive: false,
+    },
   ]);
 
-  // Match Lifecycle State
+  // Active Match State
   const [matchState, setMatchState] = useState<CarromMatchState>({
-    matchId: 'init',
+    matchId: 'match_init',
     mode: 'solo',
     subMode: 'classic',
     players: [],
@@ -190,7 +209,6 @@ export const CarromPage: React.FC = () => {
     [soundEnabled]
   );
 
-  // Toggle sound
   const handleToggleSound = (enabled: boolean) => {
     setSoundEnabled(enabled);
     saveSoundPreference(enabled);
@@ -221,15 +239,8 @@ export const CarromPage: React.FC = () => {
       const engine = new CarromPhysicsEngine(initialConfig);
       physicsEngineRef.current = engine;
 
-      // Register collision sound
-      engine.onCollision(() => {
-        playSfx('hit');
-      });
-
-      // Register pocket sound
-      engine.onPocket(() => {
-        playSfx('pocket');
-      });
+      engine.onCollision(() => playSfx('hit'));
+      engine.onPocket(() => playSfx('pocket'));
 
       const initialMatchState: CarromMatchState = {
         matchId: `match_${Date.now()}`,
@@ -257,6 +268,7 @@ export const CarromPage: React.FC = () => {
       setShotPower(65);
       setIsShotInMotion(false);
       setTurnMessage(`${activePlayers[0]?.name || 'Player 1'}’s turn! Aim and shoot.`);
+      setActivityLog([`Match started! ${activePlayers[0]?.name || 'Player 1'} takes the opening strike.`]);
       setViewState('match');
     },
     [players, subMode, playMode, targetScore, playSfx]
@@ -285,6 +297,7 @@ export const CarromPage: React.FC = () => {
     setMatchState(saved.matchState);
     setStrikerBaselinePos(saved.strikerPosition.x);
     setIsShotInMotion(false);
+    setActivityLog((prev) => [...prev, 'Resumed active saved match.']);
     setViewState('match');
   };
 
@@ -304,6 +317,12 @@ export const CarromPage: React.FC = () => {
       setIsShotInMotion(true);
       setTurnMessage('Striker launched! Simulating collisions & momentum transfer...');
 
+      const activePlayer = matchState.players[matchState.activePlayerIndex];
+      setActivityLog((prev) => [
+        ...prev.slice(-15),
+        `${activePlayer?.name || 'Player'} launched striker (${powerPercent}% power).`,
+      ]);
+
       // Broadcast shot to socket if in online multiplayer
       if (playMode === 'friends') {
         carromSocketClient.broadcastShot(
@@ -320,7 +339,7 @@ export const CarromPage: React.FC = () => {
         lastShotTelemetry: telemetry,
       }));
     },
-    [isShotInMotion, matchState.winner, matchState.activePlayerIndex, playMode, strikerBaselinePos, playSfx]
+    [isShotInMotion, matchState.winner, matchState.activePlayerIndex, matchState.players, playMode, strikerBaselinePos, playSfx]
   );
 
   // Baseline position change handler
@@ -370,6 +389,10 @@ export const CarromPage: React.FC = () => {
         // Evaluate shot rules
         const result = evaluateCarromShot(matchState, pocketedCoins);
 
+        if (result.message) {
+          setActivityLog((prev) => [...prev.slice(-15), result.message]);
+        }
+
         // Re-spot queen if required
         if (result.queenReturnedToCenter) {
           engine.respotCoin('queen');
@@ -392,7 +415,6 @@ export const CarromPage: React.FC = () => {
         if (nextPlayer) {
           engine.initStriker(nextPlayer.side, 400);
           setStrikerBaselinePos(400);
-          // Set default aim facing inwards towards center
           const defaultAngle =
             nextPlayer.side === 'south'
               ? -Math.PI / 2
@@ -414,6 +436,7 @@ export const CarromPage: React.FC = () => {
           addCoins(25);
           clearCarromMatch();
           setHasSavedGame(false);
+          setActivityLog((prev) => [...prev.slice(-15), `🏆 ${winner.name} wins the match!`]);
         }
 
         // Update physics explanation
@@ -538,15 +561,9 @@ export const CarromPage: React.FC = () => {
     }));
   };
 
-  // Compute Remaining Coins on Board
-  const engine = physicsEngineRef.current;
-  const remainingCoins = {
-    white: engine?.coins.filter((c) => c.label === 'coin_white' && !engine.isPocketed(c)).length ?? 9,
-    black: engine?.coins.filter((c) => c.label === 'coin_black' && !engine.isPocketed(c)).length ?? 9,
-    queen: engine?.coins.some((c) => c.label === 'coin_queen' && !engine.isPocketed(c)) ?? true,
-  };
-
-  // If in Lobby / Setup View
+  // ---------------------------------------------------------
+  // RENDER: LOBBY / SETUP VIEW (Matching Screenshot 1)
+  // ---------------------------------------------------------
   if (viewState === 'setup') {
     return (
       <CarromSetupView
@@ -582,33 +599,44 @@ export const CarromPage: React.FC = () => {
 
   const activePlayer = matchState.players[matchState.activePlayerIndex] || players[0];
 
+  // ---------------------------------------------------------
+  // RENDER: IN-GAME MATCH VIEW (Matching Screenshot 2)
+  // 3-Column Zero-Scroll Layout
+  // ---------------------------------------------------------
   return (
-    <div className="h-full min-h-screen bg-canvas text-text-primary flex flex-col font-sans select-none overflow-x-hidden">
-      {/* 1. TOP HEADER */}
-      <header className="h-14 border-b border-border bg-card/90 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between shrink-0 z-30">
-        <div className="flex items-center gap-3">
+    <div className="h-full max-h-full flex flex-col bg-canvas text-text-primary selection:bg-amber-500/30 selection:text-amber-200 overflow-hidden font-sans">
+      {/* 1. TOP HEADER (Matching Ludo Header in Screenshot 2) */}
+      <header className="h-12 sm:h-14 shrink-0 px-3 sm:px-6 bg-card/90 backdrop-blur-md border-b border-border flex items-center justify-between z-30">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setViewState('setup')}
-            className="p-2 rounded-xl bg-card hover:bg-canvas text-text-muted hover:text-text-primary transition-colors border border-border cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl bg-card hover:bg-canvas text-text-muted hover:text-text-primary transition-colors flex items-center gap-1.5 text-xs font-semibold border border-border cursor-pointer"
             title="Return to Match Setup"
           >
             <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Lobby</span>
           </button>
-
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold font-display text-text-primary tracking-tight">
-                Newton’s Carrom
-              </h1>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                {subMode === 'classic' ? 'Classic Carrom' : 'Physics Lab'}
+              <h1 className="text-sm sm:text-base font-bold font-display text-text-primary">Newton’s Carrom</h1>
+              <span className="badge-playlab text-[10px] hidden sm:inline">
+                {playMode === 'friends'
+                  ? `Online Room: ${roomCode}`
+                  : playMode === 'duel'
+                  ? '1v1 Duel'
+                  : playMode === 'team'
+                  ? '2v2 Doubles'
+                  : 'Solo vs AI'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Top Controls: Emoji Reactions, Sound, Reset */}
         <div className="flex items-center gap-2">
+          {/* Reaction Emojis Bar */}
+          <CarromReactions />
+
           <button
             onClick={() => handleToggleSound(!soundEnabled)}
             className="p-2 rounded-xl bg-card hover:bg-canvas text-text-muted hover:text-text-primary transition-colors border border-border cursor-pointer"
@@ -624,47 +652,47 @@ export const CarromPage: React.FC = () => {
           <button
             onClick={() => startNewMatch()}
             className="p-2 rounded-xl bg-card hover:bg-canvas text-text-muted hover:text-text-primary transition-colors border border-border cursor-pointer"
-            title="Reset Game Board"
+            title="Reset Board"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      {/* 2. MAIN CARROM GAMEPLAY GRID */}
-      <main className="flex-1 w-full max-w-[1680px] mx-auto p-3 sm:p-5 flex flex-col justify-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          
-          {/* ========================================================= */}
-          {/* LEFT COLUMN: Scoreboard & Live Telemetry HUD (3 Cols)     */}
-          {/* ========================================================= */}
-          <div className="lg:col-span-3 space-y-4 order-2 lg:order-1">
-            <CarromScoreboard
-              matchState={matchState}
-              remainingCoins={remainingCoins}
-              turnMessage={turnMessage}
-            />
+      {/* 2. MAIN 3-COLUMN ZERO-SCROLL LAYOUT (Matching Math Ludo in Screenshot 2) */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row items-center justify-between p-2 sm:p-3 xl:p-4 gap-3 lg:gap-4 xl:gap-5 overflow-hidden max-w-[1800px] mx-auto w-full relative">
+        
+        {/* Left Rail: 3D Giant Shoot Button & Players Standings */}
+        <CarromTurnRail
+          matchState={matchState}
+          activePlayer={activePlayer}
+          isShotInMotion={isShotInMotion}
+          aimAngleRad={aimAngleRad}
+          onAimAngleChange={setAimAngleRad}
+          shotPower={shotPower}
+          onShotPowerChange={setShotPower}
+          onShoot={() => executeShot(aimAngleRad, shotPower)}
+        />
 
-            {/* Quick Tips Box */}
-            <div className="card p-3 bg-card border border-border shadow-xs text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 font-bold text-text-primary">
-                <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
-                <span>Controls & Pro Tips</span>
-              </div>
-              <ul className="text-[11px] text-text-muted space-y-1 list-disc list-inside leading-relaxed">
-                <li><strong className="text-text-primary">Drag Baseline:</strong> Slide the striker horizontally along your baseline.</li>
-                <li><strong className="text-text-primary">Drag-to-Shoot:</strong> Pull back from the striker like a slingshot to set power and release to shoot.</li>
-                <li><strong className="text-text-primary">Shoot Button:</strong> Or use the sliders below and click the prominent SHOOT button!</li>
-              </ul>
-            </div>
-          </div>
+        {/* Center Column: Interactive Scaled Carrom Board & Compact Controller */}
+        <div className="flex-1 flex flex-col items-center justify-center min-h-0 h-full w-full max-w-[620px] mx-auto space-y-2">
+          <CarromBoardView
+            physicsEngine={physicsEngineRef.current}
+            activePlayer={activePlayer}
+            isShotInMotion={isShotInMotion}
+            strikerBaselinePos={strikerBaselinePos}
+            onBaselinePosChange={handleBaselinePosChange}
+            aimAngleRad={aimAngleRad}
+            onAimAngleChange={setAimAngleRad}
+            shotPower={shotPower}
+            onShotPowerChange={setShotPower}
+            onExecuteShot={executeShot}
+            aimGuideEnabled={true}
+          />
 
-          {/* ========================================================= */}
-          {/* CENTER COLUMN: CARROM BOARD CANVAS (6 Cols)               */}
-          {/* ========================================================= */}
-          <div className="lg:col-span-6 flex flex-col items-center justify-center space-y-3 order-1 lg:order-2">
-            <CarromBoardView
-              physicsEngine={physicsEngineRef.current}
+          {/* Compact Striker Baseline & Friction Track */}
+          <div className="w-full">
+            <CarromControlsBar
               activePlayer={activePlayer}
               isShotInMotion={isShotInMotion}
               strikerBaselinePos={strikerBaselinePos}
@@ -673,43 +701,55 @@ export const CarromPage: React.FC = () => {
               onAimAngleChange={setAimAngleRad}
               shotPower={shotPower}
               onShotPowerChange={setShotPower}
-              onExecuteShot={executeShot}
-              aimGuideEnabled={true}
-            />
-
-            {/* Striker Slider & Shoot Controls Bar */}
-            <div className="w-full max-w-[620px]">
-              <CarromControlsBar
-                activePlayer={activePlayer}
-                isShotInMotion={isShotInMotion}
-                strikerBaselinePos={strikerBaselinePos}
-                onBaselinePosChange={handleBaselinePosChange}
-                aimAngleRad={aimAngleRad}
-                onAimAngleChange={setAimAngleRad}
-                shotPower={shotPower}
-                onShotPowerChange={setShotPower}
-                boardFriction={matchState.config.frictionAir}
-                onBoardFrictionChange={(f) => handleConfigChange({ frictionAir: f })}
-                onShoot={() => executeShot(aimAngleRad, shotPower)}
-              />
-            </div>
-          </div>
-
-          {/* ========================================================= */}
-          {/* RIGHT COLUMN: Physics Lab & Telemetry Insights (3 Cols)   */}
-          {/* ========================================================= */}
-          <div className="lg:col-span-3 space-y-4 order-3">
-            <CarromPhysicsLabPanel
-              subMode={subMode}
-              config={matchState.config}
-              onConfigChange={handleConfigChange}
-              lastTelemetry={matchState.lastShotTelemetry}
-              strikerSpeed={strikerSpeed}
+              boardFriction={matchState.config.frictionAir}
+              onBoardFrictionChange={(f) => handleConfigChange({ frictionAir: f })}
+              onShoot={() => executeShot(aimAngleRad, shotPower)}
             />
           </div>
-
         </div>
-      </main>
+
+        {/* Right Rail: Newton's Physics Hub, Rules & Tactical Log */}
+        <CarromPhysicsRail
+          subMode={subMode}
+          config={matchState.config}
+          onConfigChange={handleConfigChange}
+          lastTelemetry={matchState.lastShotTelemetry}
+          strikerSpeed={strikerSpeed}
+          activityLog={activityLog}
+        />
+      </div>
+
+      {/* Mobile Bottom Dock (< lg screens) */}
+      <div className="lg:hidden shrink-0 w-full h-16 sm:h-20 px-3 py-1.5 bg-card/95 border-t border-border flex items-center justify-between gap-3 z-20">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-2xl">{activePlayer.isBot ? '🤖' : '👨‍🎓'}</span>
+          <div className="min-w-0">
+            <span className="text-xs font-bold text-amber-500 truncate block">
+              {activePlayer.name}
+            </span>
+            <span className="text-[11px] text-text-secondary truncate block">
+              {isShotInMotion
+                ? 'Simulating motion...'
+                : activePlayer.isBot
+                ? 'Bot is aiming...'
+                : 'Your turn to strike!'}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!activePlayer.isBot && !isShotInMotion) {
+              executeShot(aimAngleRad, shotPower);
+            }
+          }}
+          disabled={activePlayer.isBot || isShotInMotion}
+          className="h-11 sm:h-12 px-5 rounded-2xl flex items-center justify-center font-black text-sm shadow-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white disabled:opacity-50 cursor-pointer"
+        >
+          SHOOT ({shotPower}%)
+        </button>
+      </div>
 
       {/* 3. VICTORY CELEBRATION MODAL */}
       {matchState.winner && (
