@@ -1,9 +1,10 @@
 // =========================================================
 // VIDYAVERSE NEWTON'S CARROM — CONTROLS & SHOOT BAR
+// Includes Striker Positioning, Aim, Power & Board Friction Slider
 // =========================================================
 
 import React from 'react';
-import { Zap, Play, Compass, Sliders, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Zap, Play, Compass, Sliders, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { clsx } from 'clsx';
 import { PlayerSlot } from '../types';
 
@@ -16,6 +17,8 @@ export interface CarromControlsBarProps {
   onAimAngleChange: (angleRad: number) => void;
   shotPower: number;
   onShotPowerChange: (power: number) => void;
+  boardFriction: number;
+  onBoardFrictionChange: (friction: number) => void;
   onShoot: () => void;
 }
 
@@ -28,6 +31,8 @@ export const CarromControlsBar: React.FC<CarromControlsBarProps> = ({
   onAimAngleChange,
   shotPower,
   onShotPowerChange,
+  boardFriction,
+  onBoardFrictionChange,
   onShoot,
 }) => {
   const isDisabled = isShotInMotion || activePlayer.isBot;
@@ -37,6 +42,12 @@ export const CarromControlsBar: React.FC<CarromControlsBarProps> = ({
     if (isDisabled) return;
     const newRad = aimAngleRad + (deltaDeg * Math.PI) / 180;
     onAimAngleChange(newRad);
+  };
+
+  const getFrictionLabel = (val: number) => {
+    if (val <= 0.008) return '⚡ Ultra Slick';
+    if (val <= 0.018) return '🎯 Standard Boric';
+    return '🪵 Rough Wood';
   };
 
   return (
@@ -129,7 +140,74 @@ export const CarromControlsBar: React.FC<CarromControlsBarProps> = ({
         </div>
       </div>
 
-      {/* 3. PROMINENT SHOOT ACTION BUTTON */}
+      {/* 3. Board Friction Slider (Boric Powder Simulator) */}
+      <div className="space-y-1.5 pt-2 border-t border-border/80">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-bold text-text-primary flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
+            <span>Board Friction (Boric Powder)</span>
+          </span>
+          <span className="font-mono text-cyan-500 font-bold">
+            {boardFriction.toFixed(3)}{' '}
+            <span className="text-[10px] text-text-muted font-normal">
+              ({getFrictionLabel(boardFriction)})
+            </span>
+          </span>
+        </div>
+        <input
+          type="range"
+          min="0.005"
+          max="0.035"
+          step="0.001"
+          value={boardFriction}
+          onChange={(e) => onBoardFrictionChange(Number(e.target.value))}
+          className="w-full accent-cyan-500 cursor-pointer h-2 bg-canvas rounded-lg"
+          title="Drag to change board surface friction"
+        />
+        <div className="flex items-center justify-between gap-1.5 pt-0.5">
+          <button
+            type="button"
+            onClick={() => onBoardFrictionChange(0.006)}
+            className={clsx(
+              'flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer text-center',
+              boardFriction <= 0.008
+                ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/40 shadow-xs'
+                : 'bg-canvas text-text-muted border-border hover:text-text-primary'
+            )}
+            title="Fastest, lowest friction surface"
+          >
+            ⚡ Slick (0.006)
+          </button>
+          <button
+            type="button"
+            onClick={() => onBoardFrictionChange(0.013)}
+            className={clsx(
+              'flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer text-center',
+              boardFriction > 0.008 && boardFriction <= 0.018
+                ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/40 shadow-xs'
+                : 'bg-canvas text-text-muted border-border hover:text-text-primary'
+            )}
+            title="Standard tournament boric powder friction"
+          >
+            🎯 Standard (0.013)
+          </button>
+          <button
+            type="button"
+            onClick={() => onBoardFrictionChange(0.026)}
+            className={clsx(
+              'flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer text-center',
+              boardFriction > 0.018
+                ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/40 shadow-xs'
+                : 'bg-canvas text-text-muted border-border hover:text-text-primary'
+            )}
+            title="High friction wooden surface"
+          >
+            🪵 Rough (0.026)
+          </button>
+        </div>
+      </div>
+
+      {/* 4. PROMINENT SHOOT ACTION BUTTON */}
       <button
         type="button"
         disabled={isDisabled}

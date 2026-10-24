@@ -92,32 +92,43 @@ export const CarromPhysicsLabPanel: React.FC<CarromPhysicsLabPanelProps> = ({
             </div>
           )}
 
-          {/* 4. PHYSICS LAB PARAMETERS SLIDERS (Active in Lab Mode) */}
+          {/* 4. BOARD SURFACE FRICTION CONTROLLER (Always accessible) */}
+          <div className="p-3 rounded-xl bg-canvas/70 border border-border space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-text-primary">
+              <span className="flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-cyan-500" />
+                <span>Board Surface Friction</span>
+              </span>
+              <span className="font-mono text-cyan-500 font-bold">
+                {config.frictionAir.toFixed(3)}{' '}
+                <span className="text-[10px] text-text-muted font-normal">
+                  ({config.frictionAir <= 0.008 ? '⚡ Ultra Slick' : config.frictionAir <= 0.018 ? '🎯 Standard Boric' : '🪵 Rough Wood'})
+                </span>
+              </span>
+            </div>
+
+            <input
+              type="range"
+              min="0.005"
+              max="0.035"
+              step="0.001"
+              value={config.frictionAir}
+              onChange={(e) => onConfigChange({ frictionAir: Number(e.target.value) })}
+              className="w-full accent-cyan-500 cursor-pointer h-2 bg-card rounded-lg"
+            />
+            <div className="flex justify-between text-[10px] text-text-muted">
+              <span>⚡ 0.005 (Slick Powder)</span>
+              <span>0.013 (Standard)</span>
+              <span>0.035 (Rough) 🪵</span>
+            </div>
+          </div>
+
+          {/* 5. ADVANCED PHYSICS LAB CONSTANTS (Lab Mode) */}
           {subMode === 'lab' && (
             <div className="p-3 rounded-xl bg-canvas/70 border border-border space-y-3">
               <div className="flex items-center gap-1.5 text-xs font-bold text-text-primary">
                 <Sliders className="w-3.5 h-3.5 text-amber-500" />
-                <span>Adjust Experimental Physics Constants</span>
-              </div>
-
-              {/* Friction Slider */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-text-muted">Board Friction (Boric Powder):</span>
-                  <span className="font-mono font-bold text-emerald-500">{config.frictionAir.toFixed(3)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.005"
-                  max="0.040"
-                  step="0.002"
-                  value={config.frictionAir}
-                  onChange={(e) => onConfigChange({ frictionAir: Number(e.target.value) })}
-                  className="w-full accent-emerald-500 cursor-pointer h-2 bg-card rounded-lg"
-                />
-                <span className="text-[10px] text-text-muted block">
-                  Lower = smoother glide; higher = rough surface deceleration.
-                </span>
+                <span>Advanced Physics Constants</span>
               </div>
 
               {/* Restitution Slider */}

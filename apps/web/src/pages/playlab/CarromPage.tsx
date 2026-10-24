@@ -688,6 +688,8 @@ export const CarromPage: React.FC = () => {
                 onAimAngleChange={setAimAngleRad}
                 shotPower={shotPower}
                 onShotPowerChange={setShotPower}
+                boardFriction={matchState.config.frictionAir}
+                onBoardFrictionChange={(f) => handleConfigChange({ frictionAir: f })}
                 onShoot={() => executeShot(aimAngleRad, shotPower)}
               />
             </div>
