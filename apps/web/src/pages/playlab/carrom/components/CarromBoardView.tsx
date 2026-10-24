@@ -13,6 +13,7 @@ import {
   STRIKER_RADIUS,
   BASELINE_CONFIGS,
 } from '../carromPhysics';
+import { clsx } from 'clsx';
 import { PlayerSlot, CoinBodyData } from '../types';
 
 export interface CarromBoardViewProps {
@@ -27,6 +28,7 @@ export interface CarromBoardViewProps {
   onShotPowerChange: (newPower: number) => void;
   onExecuteShot: (angleRad: number, powerPercent: number) => void;
   aimGuideEnabled?: boolean;
+  className?: string;
 }
 
 type DragMode = 'none' | 'striker_positioning' | 'aiming' | 'slingshot';
@@ -43,6 +45,7 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
   onShotPowerChange,
   onExecuteShot,
   aimGuideEnabled = true,
+  className,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -774,7 +777,10 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full max-w-[620px] aspect-square rounded-3xl overflow-hidden shadow-2xl border-4 border-[#331105] bg-[#331105] select-none mx-auto flex items-center justify-center"
+      className={clsx(
+        'relative aspect-square rounded-3xl overflow-hidden shadow-2xl border-4 border-[#331105] bg-[#331105] select-none mx-auto flex items-center justify-center',
+        className || 'w-full max-w-[620px]'
+      )}
       style={{ touchAction: 'none' }}
     >
       <canvas
