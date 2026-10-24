@@ -17,6 +17,8 @@ export function AppShell() {
   const isWorkstation =
     location.pathname.startsWith('/playlab/ludo') ||
     location.pathname.startsWith('/playlab/carrom') ||
+    location.pathname.startsWith('/playlab/bharat') ||
+    location.pathname.startsWith('/bharat-explorer') ||
     location.pathname.startsWith('/playlab/solar') ||
     location.pathname.startsWith('/playlab/human-body') ||
     location.pathname.startsWith('/playlab/physics-playground') ||
@@ -58,6 +60,8 @@ export function AppShell() {
             className={`flex-1 overflow-hidden flex flex-col ${
               location.pathname.startsWith('/playlab/ludo') ||
               location.pathname.startsWith('/playlab/carrom') ||
+              location.pathname.startsWith('/playlab/bharat') ||
+              location.pathname.startsWith('/bharat-explorer') ||
               location.pathname.startsWith('/playlab/solar') ||
               location.pathname.startsWith('/playlab/human-body') ||
               location.pathname.startsWith('/playlab/physics-playground')

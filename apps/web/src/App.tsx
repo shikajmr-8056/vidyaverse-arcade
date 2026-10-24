@@ -37,6 +37,7 @@ export default function App() {
         <Route path="/playlab/maze" element={<MazeBotPage />} />
         <Route path="/playlab/carrom" element={<CarromPage />} />
         <Route path="/playlab/bharat" element={<BharatExplorerPage />} />
+        <Route path="/bharat-explorer" element={<Navigate to="/playlab/bharat" replace />} />
         <Route path="/playlab/wordquest" element={<WordQuestPage />} />
         <Route path="/playlab/number-ninjas" element={<NumberNinjasPage />} />
         <Route path="/playlab/solar" element={<SolarSystemPage />} />
