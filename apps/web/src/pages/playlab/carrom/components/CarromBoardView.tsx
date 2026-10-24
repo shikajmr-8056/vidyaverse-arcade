@@ -223,28 +223,13 @@ export const CarromBoardView: React.FC<CarromBoardViewProps> = ({
     const isHorizontal = player.side === 'south' || player.side === 'north';
 
     if (dragModeRef.current === 'striker_positioning') {
-      // Check if player pulls backwards away from baseline to engage slingshot
-      const pullAway =
-        player.side === 'south'
-          ? coords.y - baseline.fixedCoordinate
-          : player.side === 'north'
-          ? baseline.fixedCoordinate - coords.y
-          : player.side === 'west'
-          ? baseline.fixedCoordinate - coords.x
-          : coords.x - baseline.fixedCoordinate;
-
-      if (pullAway > 42) {
-        // Transition seamlessly to Slingshot Power Cue
-        dragModeRef.current = 'slingshot';
-      } else {
-        // Instantaneous, frictionless horizontal baseline tracking
-        const travelCoord = isHorizontal ? coords.x : coords.y;
-        const clamped = Math.max(baseline.minTravel, Math.min(baseline.maxTravel, travelCoord));
-        strikerBaselinePosRef.current = clamped;
-        engine.setStrikerBaselinePosition(player.side, clamped);
-        scheduleReactSync();
-        return;
-      }
+      // Instantaneous, frictionless horizontal baseline tracking with zero jitter
+      const travelCoord = isHorizontal ? coords.x : coords.y;
+      const clamped = Math.max(baseline.minTravel, Math.min(baseline.maxTravel, travelCoord));
+      strikerBaselinePosRef.current = clamped;
+      engine.setStrikerBaselinePosition(player.side, clamped);
+      scheduleReactSync();
+      return;
     }
 
     if (dragModeRef.current === 'slingshot') {
