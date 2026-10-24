@@ -11,8 +11,10 @@ import {
   ChevronUp,
   Sparkles,
   Zap,
+  Target,
   Activity,
   Layers,
+  Info,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ShotTelemetry, CarromPhysicsConfig } from '../types';
@@ -128,15 +130,10 @@ export const CarromPhysicsBottomBar: React.FC<CarromPhysicsBottomBarProps> = ({
     PHYSICS_CONCEPTS.find((c) => c.key === selectedKey) || PHYSICS_CONCEPTS[0];
 
   const momentumValue = (strikerSpeed * config.strikerMass).toFixed(1);
-  const kineticEnergyValue = (
-    0.5 *
-    config.strikerMass *
-    Math.pow(strikerSpeed / 100, 2)
-  ).toFixed(2);
 
   return (
     <footer className="w-full shrink-0 bg-card border border-border rounded-2xl shadow-xs p-2.5 sm:p-3 select-none flex flex-col gap-2 transition-all">
-      {/* 1. TOP CONTROL ROW: Header + Tabs + Telemetry Badges */}
+      {/* 1. TOP CONTROL ROW: Header + Tabs + Telemetry Badges (With Larger Values) */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 pb-2">
         {/* Left: Section Title */}
         <div className="flex items-center gap-1.5 shrink-0">
@@ -165,69 +162,137 @@ export const CarromPhysicsBottomBar: React.FC<CarromPhysicsBottomBarProps> = ({
           ))}
         </div>
 
-        {/* Right: Live Telemetry Readouts & Details Toggle */}
+        {/* Right: Live Telemetry Readouts (Made larger as requested in Pic 2) & Details Toggle */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden md:flex items-center gap-2 font-mono text-[10px]">
-            <span className="px-1.5 py-0.5 rounded bg-canvas border border-border text-text-secondary" title="Striker Speed">
-              ⚡ <span className="font-bold text-emerald-600 dark:text-emerald-400">{strikerSpeed}</span> px/s
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-canvas border border-border text-text-secondary" title="Momentum p=mv">
-              🎯 <span className="font-bold text-text-primary">{momentumValue}</span> kg·px/s
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-canvas border border-border text-text-secondary" title="Last Shot Collisions">
-              💥 <span className="font-bold text-purple-600 dark:text-purple-400">{lastTelemetry?.collisionCount ?? 0}</span> impacts
-            </span>
+          <div className="flex items-center gap-2 font-mono">
+            {/* 1. Striker Speed Pill */}
+            <div
+              className="px-2.5 py-1 rounded-xl bg-canvas border border-border/80 shadow-2xs flex items-center gap-1.5"
+              title="Speed (v): Instantaneous velocity of the striker gliding on the board surface"
+            >
+              <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400">
+                {strikerSpeed}
+              </span>
+              <span className="text-[11px] font-semibold text-text-muted">px/s</span>
+            </div>
+
+            {/* 2. Momentum Pill */}
+            <div
+              className="px-2.5 py-1 rounded-xl bg-canvas border border-border/80 shadow-2xs flex items-center gap-1.5"
+              title="Momentum (p = mv): Striker mass x velocity; governs collision impact power"
+            >
+              <Target className="w-4 h-4 text-blue-500 shrink-0" />
+              <span className="text-sm sm:text-base font-black text-text-primary">
+                {momentumValue}
+              </span>
+              <span className="text-[11px] font-semibold text-text-muted">kg·px/s</span>
+            </div>
+
+            {/* 3. Impacts Pill */}
+            <div
+              className="px-2.5 py-1 rounded-xl bg-canvas border border-border/80 shadow-2xs flex items-center gap-1.5"
+              title="Impacts: Total coin collisions and cushion rebounds during the shot"
+            >
+              <Activity className="w-4 h-4 text-purple-500 shrink-0" />
+              <span className="text-sm sm:text-base font-black text-purple-600 dark:text-purple-400">
+                {lastTelemetry?.collisionCount ?? 0}
+              </span>
+              <span className="text-[11px] font-semibold text-text-muted">impacts</span>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-canvas hover:bg-card border border-border text-text-muted hover:text-text-primary text-[10px] font-bold transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-canvas hover:bg-card border border-border text-text-secondary hover:text-text-primary text-xs font-bold transition-all cursor-pointer shadow-2xs"
+            title="Toggle telemetry and concept explanations"
           >
             <span>{isExpanded ? 'Less' : 'Details'}</span>
-            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
 
-      {/* 2. CONCEPT CONTENT ROW (Compact single line by default) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
-          <span className="font-bold text-text-primary text-xs shrink-0">
-            {activeConcept.title}:
-          </span>
-          <span className="font-mono text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded shrink-0">
-            {activeConcept.formula}
-          </span>
-          <span className="text-[11px] text-text-secondary truncate">
-            {activeConcept.summary}
-          </span>
+      {/* 2. CONCEPT CONTENT ROW + TELEMETRY METRIC EXPLAINER STRIP */}
+      <div className="flex flex-col gap-1.5">
+        {/* Active Law Concept Line */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="font-bold text-text-primary text-xs shrink-0">
+              {activeConcept.title}:
+            </span>
+            <span className="font-mono text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded shrink-0">
+              {activeConcept.formula}
+            </span>
+            <span className="text-[11px] text-text-secondary truncate">
+              {activeConcept.summary}
+            </span>
+          </div>
+
+          {/* Dynamic Last Shot Callout if Available */}
+          {lastTelemetry?.newtonExplanation && (
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] shrink-0 font-medium max-w-[420px] truncate">
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span className="truncate">Last Shot: {lastTelemetry.newtonExplanation}</span>
+            </div>
+          )}
         </div>
 
-        {/* Dynamic Last Shot Callout if Available */}
-        {lastTelemetry?.newtonExplanation && (
-          <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] shrink-0 font-medium max-w-[420px] truncate">
-            <Sparkles className="w-3 h-3 shrink-0" />
-            <span className="truncate">Last Shot: {lastTelemetry.newtonExplanation}</span>
-          </div>
-        )}
+        {/* Dedicated Telemetry Explanations Bar (Explains Speed, Momentum & Impacts) */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-text-muted bg-canvas/60 px-2.5 py-1 rounded-xl border border-border/60">
+          <span className="font-bold text-text-primary flex items-center gap-1">
+            <Info className="w-3 h-3 text-purple-500" />
+            <span>Telemetry Guide:</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">⚡ Speed (v)</span> = instantaneous velocity on board
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1">
+            <span className="font-bold text-text-primary">🎯 Momentum (p = mv)</span> = mass × velocity (striking punch)
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1">
+            <span className="font-bold text-purple-600 dark:text-purple-400">💥 Impacts</span> = coin collisions & cushion rebounds
+          </span>
+        </div>
       </div>
 
-      {/* 3. EXPANDABLE DETAILS DRAWER */}
+      {/* 3. EXPANDABLE DETAILS DRAWER (In-depth Concept & Telemetry Breakdown) */}
       {isExpanded && (
-        <div className="pt-2 border-t border-border/70 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-          <div className="p-2 rounded-xl bg-canvas/70 border border-border text-[11px] text-text-secondary">
-            <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-0.5">
-              💡 Carrom Application:
+        <div className="pt-2 border-t border-border/70 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+          {/* Tile 1: Speed Explanation */}
+          <div className="p-2 rounded-xl bg-canvas/70 border border-border text-[11px] text-text-secondary space-y-1">
+            <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <Zap className="w-3.5 h-3.5 text-amber-500" />
+              <span>Speed & Surface Motion (v)</span>
             </span>
-            <p className="leading-relaxed">{activeConcept.carromApplication}</p>
+            <p className="leading-relaxed">
+              Measures how fast the striker slides. Boric powder minimizes friction, allowing the striker to glide with near-constant velocity under Newton's 1st Law.
+            </p>
           </div>
 
-          <div className="p-2 rounded-xl bg-canvas/70 border border-border text-[11px] text-text-secondary">
-            <span className="font-bold text-purple-600 dark:text-purple-400 block mb-0.5">
-              🔬 Theoretical Foundation:
+          {/* Tile 2: Momentum Explanation */}
+          <div className="p-2 rounded-xl bg-canvas/70 border border-border text-[11px] text-text-secondary space-y-1">
+            <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+              <Target className="w-3.5 h-3.5 text-blue-500" />
+              <span>Momentum & Impulse Transfer (p = mv)</span>
             </span>
-            <p className="leading-relaxed">{activeConcept.details}</p>
+            <p className="leading-relaxed">
+              Striker mass (8.0 kg) multiplied by velocity. On collision, impulse <code className="font-mono text-[10px]">J = Δp</code> is transferred into target coins, accelerating them toward pockets.
+            </p>
+          </div>
+
+          {/* Tile 3: Impacts & Collisions Explanation */}
+          <div className="p-2 rounded-xl bg-canvas/70 border border-border text-[11px] text-text-secondary space-y-1">
+            <span className="font-bold text-purple-600 dark:text-purple-400 flex items-center gap-1">
+              <Activity className="w-3.5 h-3.5 text-purple-500" />
+              <span>Collisions & Rebounds (Impacts)</span>
+            </span>
+            <p className="leading-relaxed">
+              Counts all coin impacts and wooden cushion bounces during the shot. Demonstrates Newton's 3rd Law (equal action-reaction) and energy distribution.
+            </p>
           </div>
         </div>
       )}
