@@ -63,7 +63,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
 
   return (
     <aside className="w-full lg:w-[270px] xl:w-[290px] h-full flex flex-col justify-between gap-2 overflow-hidden shrink-0 select-none">
-      <div className="bg-card rounded-2xl border border-border p-2.5 sm:p-3 shadow-xs flex flex-col justify-between h-full gap-2 overflow-hidden">
+      <div className="bg-card rounded-2xl border border-border p-2 sm:p-2.5 shadow-xs flex flex-col justify-between h-full gap-1 sm:gap-1.5 overflow-hidden">
         
         {/* Panel Header */}
         <div className="flex items-center justify-between border-b border-border/80 pb-1.5 shrink-0">
@@ -90,7 +90,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
         {/* =====================================================
             1. STRIKER POSITION SLIDER
             ===================================================== */}
-        <div className="p-1.5 sm:p-2 rounded-xl bg-canvas/60 border border-border/80 space-y-1 shrink-0">
+        <div className="p-1 sm:p-1.5 rounded-xl bg-canvas/60 border border-border/80 space-y-0.5 shrink-0">
           <div className="flex items-center justify-between text-xs font-bold text-text-primary">
             <span className="flex items-center gap-1.5 text-text-secondary">
               <MoveHorizontal className="w-3.5 h-3.5 text-blue-500" />
@@ -143,7 +143,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
         {/* =====================================================
             2. AIM ANGLE SLIDER & CONTROL
             ===================================================== */}
-        <div className="p-1.5 sm:p-2 rounded-xl bg-canvas/60 border border-border/80 space-y-1 shrink-0">
+        <div className="p-1 sm:p-1.5 rounded-xl bg-canvas/60 border border-border/80 space-y-0.5 shrink-0">
           <div className="flex items-center justify-between text-xs font-bold text-text-primary">
             <span className="flex items-center gap-1.5 text-text-secondary">
               <Compass className="w-3.5 h-3.5 text-cyan-500" />
@@ -199,7 +199,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
         {/* =====================================================
             3. SHOT POWER SLIDER
             ===================================================== */}
-        <div className="p-1.5 sm:p-2 rounded-xl bg-canvas/60 border border-border/80 space-y-1 shrink-0">
+        <div className="p-1 sm:p-1.5 rounded-xl bg-canvas/60 border border-border/80 space-y-0.5 shrink-0">
           <div className="flex items-center justify-between text-xs font-bold text-text-primary">
             <span className="flex items-center gap-1.5 text-text-secondary">
               <Zap className="w-3.5 h-3.5 text-amber-500" />
@@ -245,7 +245,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
         {/* =====================================================
             4. BOARD FRICTION SLIDER
             ===================================================== */}
-        <div className="p-1.5 sm:p-2 rounded-xl bg-canvas/60 border border-border/80 space-y-1 shrink-0">
+        <div className="p-1 sm:p-1.5 rounded-xl bg-canvas/60 border border-border/80 space-y-0.5 shrink-0">
           <div className="flex items-center justify-between text-xs font-bold text-text-primary">
             <span className="flex items-center gap-1.5 text-text-secondary">
               <Sliders className="w-3.5 h-3.5 text-emerald-500" />
@@ -319,7 +319,7 @@ export const CarromRightPanel: React.FC<CarromRightPanelProps> = ({
             onClick={onShoot}
             disabled={isTurnDisabled}
             className={clsx(
-              'w-full py-2.5 sm:py-3 px-3 rounded-2xl flex items-center justify-center gap-2 font-black text-sm tracking-wide transition-all shadow-md active:scale-[0.98] cursor-pointer',
+              'w-full py-2 sm:py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs sm:text-sm tracking-wide transition-all shadow-md active:scale-[0.98] cursor-pointer',
               isTurnDisabled
                 ? 'bg-slate-300 dark:bg-slate-800 text-text-muted cursor-not-allowed opacity-60'
                 : 'bg-gradient-to-r from-[#6541F5] via-[#5b36ed] to-[#5230E8] text-white hover:shadow-purple-500/30 hover:brightness-105'

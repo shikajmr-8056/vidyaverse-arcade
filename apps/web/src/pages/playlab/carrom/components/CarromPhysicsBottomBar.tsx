@@ -214,6 +214,8 @@ export const CarromPhysicsBottomBar: React.FC<CarromPhysicsBottomBarProps> = ({
         </div>
       </div>
 
+      {isExpanded && (
+      <>
       {/* 2. CONCEPT CONTENT ROW + TELEMETRY METRIC EXPLAINER STRIP */}
       <div className="flex flex-col gap-1.5">
         {/* Active Law Concept Line */}
@@ -295,6 +297,8 @@ export const CarromPhysicsBottomBar: React.FC<CarromPhysicsBottomBarProps> = ({
             </p>
           </div>
         </div>
+      )}
+      </>
       )}
     </footer>
   );

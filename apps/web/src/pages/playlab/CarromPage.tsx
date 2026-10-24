@@ -679,7 +679,7 @@ export const CarromPage: React.FC = () => {
       </header>
 
       {/* 2. MAIN VIEWPORT-FITTED CONTAINER (Zero-Scroll) */}
-      <div className="flex-1 min-h-0 flex flex-col p-2 sm:p-2.5 lg:p-3 gap-2 overflow-hidden w-full max-w-[1700px] mx-auto">
+      <div className="flex-1 min-h-0 flex flex-col p-1 sm:p-1.5 lg:p-2 gap-1 sm:gap-1.5 overflow-hidden w-full max-w-[1700px] mx-auto">
         {/* A. MAIN GAMEPLAY REGION (3 Vertical Columns) */}
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[270px_1fr_270px] xl:grid-cols-[290px_1fr_290px] gap-2.5 lg:gap-3 items-center overflow-hidden">
           
@@ -704,7 +704,7 @@ export const CarromPage: React.FC = () => {
               onShotPowerChange={setShotPower}
               onExecuteShot={executeShot}
               aimGuideEnabled={true}
-              className="max-h-[min(100%,560px)] max-w-full aspect-square"
+              className="max-h-[min(100%,500px)] max-w-full aspect-square"
             />
           </div>
 

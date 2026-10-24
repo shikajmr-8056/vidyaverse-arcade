@@ -39,6 +39,30 @@ export function AppShell() {
     };
   }, [setOnline]);
 
+  // Detect if running embedded inside parent frame (VidyaVerse shell)
+  const isEmbedded =
+    typeof window !== 'undefined' &&
+    (window.self !== window.top ||
+      new URLSearchParams(window.location.search).get('embedded') === 'true' ||
+      window.location.hash.includes('embedded=true'));
+
+  if (isEmbedded) {
+    return (
+      <div className="flex h-screen w-full bg-canvas text-text-primary overflow-hidden transition-colors duration-200">
+        <main
+          className={`flex-1 ${
+            isWorkstation
+              ? 'overflow-hidden flex flex-col p-0'
+              : 'overflow-y-auto max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6'
+          }`}
+          id="main-content"
+        >
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+
   // Apply DOM tokens (theme + enlarged text mode) on mount
   useEffect(() => {
     applyDOMTokens();
