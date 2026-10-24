@@ -1,698 +1,656 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+// =========================================================
+// VIDYAVERSE PLAYLAB — MATH VISUALIZER (FORMULALENS)
+// Complete replacement with FormulaLens Mathematical Studio
+// Integrated with VidyaVerse UI, Theme Tokens & Workstation Layout
+// =========================================================
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  Compass,
-  Divide,
-  Hash,
-  Layers,
-  LineChart,
-  Shapes,
   Sparkles,
-  RotateCcw,
+  RefreshCw,
+  Share2,
+  Check,
+  Layers,
+  Compass,
+  GitCompare,
+  Box,
+  Grid,
+  Search,
   Sliders,
-  CheckCircle2,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
+import { FORMULA_PRESETS } from './math/presets';
+import {
+  FormulaPreset,
+  ViewMode,
+  ParameterConfig,
+  CalculusState,
+  ComparisonState,
+  MatrixState,
+  PresetCategory,
+} from './math/types';
+import { parseExpression, generate2DData, computeDerivative } from './math/mathParser';
+import { readStateFromUrl, writeStateToUrl } from './math/urlState';
 
-type VisualizerTab = 'numberline' | 'fractions' | 'geometry' | 'grapher';
+// FormulaLens Components
+import { FormulaHero } from './math/components/FormulaHero';
+import { ParameterSliders } from './math/components/ParameterSliders';
+import { TermBreakdown } from './math/components/TermBreakdown';
+import { CalculusPanel } from './math/components/CalculusPanel';
+import { ComparisonPanel } from './math/components/ComparisonPanel';
+import { Plot2D } from './math/components/Plot2D';
+import { Surface3D } from './math/components/Surface3D';
+import { MatrixTransformVisualizer } from './math/components/MatrixTransformVisualizer';
+
+const CATEGORIES: PresetCategory[] = [
+  'Algebra',
+  'Trigonometry',
+  'Calculus',
+  'Statistics',
+  'Linear Algebra',
+  '3D Surfaces',
+];
 
 export const MathVisualizerPage: React.FC = () => {
   const navigate = useNavigate();
   const { addXP } = useAuthStore();
 
-  const [activeTab, setActiveTab] = useState<VisualizerTab>('numberline');
+  // 1. Initial State from URL or fallback
+  const initialUrlState = useMemo(() => readStateFromUrl(), []);
+  const initialPreset = useMemo(() => {
+    if (initialUrlState?.presetId) {
+      const found = FORMULA_PRESETS.find((p) => p.id === initialUrlState.presetId);
+      if (found) return found;
+    }
+    return FORMULA_PRESETS[0]; // General Sine Wave
+  }, [initialUrlState]);
 
-  // --- 1. NUMBER LINE STATE ---
-  const [nlStart, setNlStart] = useState<number>(3);
-  const [nlJump, setNlJump] = useState<number>(5);
-  const [nlOperation, setNlOperation] = useState<'add' | 'subtract'>('add');
+  const [currentPreset, setCurrentPreset] = useState<FormulaPreset | null>(initialPreset);
+  const [expression, setExpression] = useState<string>(
+    initialUrlState?.expression || initialPreset.expression
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    initialUrlState?.mode || initialPreset.mode || '2d'
+  );
 
-  // --- 2. FRACTION BARS STATE ---
-  const [num1, setNum1] = useState<number>(3);
-  const [den1, setDen1] = useState<number>(4);
-  const [num2, setNum2] = useState<number>(2);
-  const [den2, setDen2] = useState<number>(3);
-
-  // --- 3. GEOMETRY STATE ---
-  const [polygonSides, setPolygonSides] = useState<number>(4); // 3=triangle, 4=square, 5=pentagon, 6=hexagon, 8=octagon
-  const [shapeRadius, setShapeRadius] = useState<number>(80);
-  const [showSymmetry, setShowSymmetry] = useState<boolean>(true);
-
-  // --- 4. FUNCTION GRAPHER STATE ---
-  const [functionType, setFunctionType] = useState<'linear' | 'quadratic'>('linear');
-  const [slopeM, setSlopeM] = useState<number>(1);
-  const [interceptC, setInterceptC] = useState<number>(2);
-  const [coeffA, setCoeffA] = useState<number>(1);
-  const [coeffB, setCoeffB] = useState<number>(0);
-
-  // Number line calculations
-  const nlResult = nlOperation === 'add' ? nlStart + nlJump : nlStart - nlJump;
-
-  // Geometry calculations
-  const interiorAngle = ((polygonSides - 2) * 180) / polygonSides;
-  const sideLength = 2 * shapeRadius * Math.sin(Math.PI / polygonSides);
-  const perimeter = polygonSides * sideLength;
-  const apothem = shapeRadius * Math.cos(Math.PI / polygonSides);
-  const area = 0.5 * perimeter * apothem;
-
-  // Polygon coordinates
-  const polyPoints = Array.from({ length: polygonSides }).map((_, i) => {
-    const angle = (i * 2 * Math.PI) / polygonSides - Math.PI / 2;
-    return {
-      x: 180 + shapeRadius * Math.cos(angle),
-      y: 160 + shapeRadius * Math.sin(angle),
-    };
+  // Parameters configuration
+  const [parameters, setParameters] = useState<Record<string, ParameterConfig>>(() => {
+    const baseParams: Record<string, ParameterConfig> = { ...initialPreset.parameters };
+    if (initialUrlState?.parameters) {
+      for (const [k, val] of Object.entries(initialUrlState.parameters as Record<string, number>)) {
+        const numVal = typeof val === 'number' ? val : Number(val);
+        if (baseParams[k]) {
+          baseParams[k] = { ...baseParams[k], value: numVal };
+        } else {
+          baseParams[k] = { value: numVal, min: -5, max: 5, step: 0.1 };
+        }
+      }
+    }
+    return baseParams;
   });
-  const polyPointsStr = polyPoints.map((p) => `${p.x},${p.y}`).join(' ');
+
+  const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
+  const [formulaAnimationKey, setFormulaAnimationKey] = useState<string>(initialPreset.id || 'initial');
+
+  // Calculus overlay state
+  const [calculusState, setCalculusState] = useState<CalculusState>({
+    enabled: initialUrlState?.mode === 'calculus' || initialPreset.mode === 'calculus',
+    x0: initialUrlState?.x0 !== undefined ? initialUrlState.x0 : 1.0,
+    showTangent: true,
+    showSecant: false,
+    secantDx: 0.5,
+  });
+
+  // Comparison overlay state
+  const [comparisonState, setComparisonState] = useState<ComparisonState>({
+    enabled: initialUrlState?.mode === 'comparison' || initialPreset.mode === 'comparison',
+    expression:
+      initialUrlState?.comparisonExpression ||
+      initialPreset.comparisonPreset?.expression ||
+      'x - (x^3)/6 + (x^5)/120',
+    latex: initialPreset.comparisonPreset?.latex || 'T(x)',
+    label: initialPreset.comparisonPreset?.label || 'Taylor Approximation',
+  });
+
+  // 2x2 Matrix state
+  const [matrixState, setMatrixState] = useState<MatrixState>(
+    initialUrlState?.matrix || initialPreset.matrixDefaults || { a: 1.0, b: 0.5, c: 0.0, d: 1.0 }
+  );
+
+  const [shareCopied, setShareCopied] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Award exploration XP once on mount
+  useEffect(() => {
+    addXP(15);
+  }, [addXP]);
+
+  // Independent variables depending on view mode
+  const independentVars = useMemo(() => {
+    return viewMode === '3d' ? ['x', 'y'] : ['x'];
+  }, [viewMode]);
+
+  // Parse expression AST
+  const parseResult = useMemo(() => {
+    return parseExpression(expression, independentVars);
+  }, [expression, independentVars]);
+
+  // Sync free variables with parameter controls
+  useEffect(() => {
+    if (!parseResult.valid) return;
+    const detectedVars = parseResult.freeVariables;
+
+    setParameters((prev) => {
+      const next: Record<string, ParameterConfig> = {};
+      for (const v of detectedVars) {
+        if (prev[v]) {
+          next[v] = prev[v];
+        } else if (currentPreset?.parameters[v]) {
+          next[v] = { ...currentPreset.parameters[v] };
+        } else {
+          next[v] = {
+            value: 1.0,
+            min: -5,
+            max: 5,
+            step: 0.1,
+            description: `Parameter ${v}`,
+          };
+        }
+      }
+      return next;
+    });
+  }, [parseResult, currentPreset]);
+
+  // Numeric scope for evaluation
+  const paramNumbers = useMemo(() => {
+    const scope: Record<string, number> = {};
+    for (const [k, cfg] of Object.entries(parameters)) {
+      scope[k] = (cfg as ParameterConfig).value;
+    }
+    return scope;
+  }, [parameters]);
+
+  const xRangeDefault = currentPreset?.defaultXRange || [-6.5, 6.5];
+  const yRangeDefault = currentPreset?.defaultYRange || [-5, 5];
+
+  // Primary 2D dataset
+  const primaryPlotData = useMemo(() => {
+    if (!parseResult.compiled || !parseResult.valid) {
+      return { x: [], y: [] };
+    }
+    return generate2DData(
+      parseResult.compiled,
+      paramNumbers,
+      xRangeDefault[0] - 2,
+      xRangeDefault[1] + 2,
+      450
+    );
+  }, [parseResult, paramNumbers, xRangeDefault]);
+
+  // Secondary comparison dataset
+  const comparisonParseResult = useMemo(() => {
+    if (viewMode !== 'comparison' || !comparisonState.expression) return null;
+    return parseExpression(comparisonState.expression, ['x']);
+  }, [viewMode, comparisonState.expression]);
+
+  const secondaryPlotData = useMemo(() => {
+    if (viewMode !== 'comparison' || !comparisonParseResult?.compiled || !comparisonParseResult.valid) {
+      return null;
+    }
+    return generate2DData(
+      comparisonParseResult.compiled,
+      paramNumbers,
+      xRangeDefault[0] - 2,
+      xRangeDefault[1] + 2,
+      450
+    );
+  }, [viewMode, comparisonParseResult, paramNumbers, xRangeDefault]);
+
+  // Residual metrics for comparison mode
+  const { maxResidual, rmsError } = useMemo(() => {
+    if (!secondaryPlotData || primaryPlotData.y.length === 0) {
+      return { maxResidual: null, rmsError: null };
+    }
+    let maxDiff = 0;
+    let sumSq = 0;
+    let count = 0;
+
+    for (let i = 0; i < Math.min(primaryPlotData.y.length, secondaryPlotData.y.length); i++) {
+      const y1 = primaryPlotData.y[i];
+      const y2 = secondaryPlotData.y[i];
+      if (y1 !== null && y2 !== null && Number.isFinite(y1) && Number.isFinite(y2)) {
+        const diff = Math.abs(y1 - y2);
+        if (diff > maxDiff) maxDiff = diff;
+        sumSq += diff * diff;
+        count++;
+      }
+    }
+
+    if (count === 0) return { maxResidual: null, rmsError: null };
+    return {
+      maxResidual: maxDiff,
+      rmsError: Math.sqrt(sumSq / count),
+    };
+  }, [primaryPlotData, secondaryPlotData]);
+
+  // Calculus tangent evaluation
+  const { slope: tangentSlope, y0: tangentY0 } = useMemo(() => {
+    if (!parseResult.compiled || !parseResult.valid || viewMode !== 'calculus') {
+      return { slope: null, y0: null };
+    }
+    return computeDerivative(parseResult.compiled, calculusState.x0, paramNumbers);
+  }, [parseResult, calculusState.x0, paramNumbers, viewMode]);
+
+  // Keep URL updated with state
+  useEffect(() => {
+    writeStateToUrl(
+      expression,
+      parameters,
+      viewMode,
+      currentPreset?.id,
+      viewMode === 'calculus' ? calculusState.x0 : undefined,
+      viewMode === 'comparison' ? comparisonState.expression : undefined,
+      viewMode === 'matrix' ? matrixState : undefined
+    );
+  }, [
+    expression,
+    parameters,
+    viewMode,
+    currentPreset,
+    calculusState.x0,
+    comparisonState.expression,
+    matrixState,
+  ]);
+
+  // Preset Selection Handler
+  const handleSelectPreset = (preset: FormulaPreset) => {
+    setCurrentPreset(preset);
+    setExpression(preset.expression);
+    setViewMode(preset.mode);
+    setParameters({ ...preset.parameters });
+    setSelectedTerm(null);
+    setFormulaAnimationKey(`${preset.id}-${Date.now()}`);
+
+    if (preset.mode === 'calculus') {
+      setCalculusState((prev) => ({ ...prev, enabled: true, x0: 1.0 }));
+    }
+    if (preset.comparisonPreset) {
+      setComparisonState({
+        enabled: true,
+        expression: preset.comparisonPreset.expression,
+        latex: preset.comparisonPreset.latex,
+        label: preset.comparisonPreset.label,
+      });
+    }
+    if (preset.matrixDefaults) {
+      setMatrixState(preset.matrixDefaults);
+    }
+  };
+
+  const handleResetParameters = () => {
+    if (currentPreset) {
+      setParameters({ ...currentPreset.parameters });
+      if (currentPreset.matrixDefaults) {
+        setMatrixState(currentPreset.matrixDefaults);
+      }
+    }
+  };
+
+  const handleChangeParameter = useCallback((name: string, value: number) => {
+    setParameters((prev) => {
+      if (!prev[name]) return prev;
+      return {
+        ...prev,
+        [name]: { ...prev[name], value },
+      };
+    });
+  }, []);
+
+  const handleShare = () => {
+    const shareUrl = writeStateToUrl(
+      expression,
+      parameters,
+      viewMode,
+      currentPreset?.id,
+      viewMode === 'calculus' ? calculusState.x0 : undefined,
+      viewMode === 'comparison' ? comparisonState.expression : undefined,
+      viewMode === 'matrix' ? matrixState : undefined
+    );
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2200);
+      });
+    }
+  };
+
+  const filteredPresets = FORMULA_PRESETS.filter((p) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.expression.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q)
+    );
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+    <div className="h-full max-h-full flex flex-col bg-canvas text-text-primary overflow-hidden font-sans select-none">
+      {/* 1. TOP HEADER (VidyaVerse Standard Layout & Formula Lens Controls) */}
+      <header className="h-14 shrink-0 px-3 sm:px-6 bg-card/90 backdrop-blur-md border-b border-border flex items-center justify-between z-30">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/playlab')}
-            className="p-2 rounded-xl bg-card border border-border hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-text-primary transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-card hover:bg-canvas text-text-muted hover:text-text-primary transition-colors flex items-center gap-1.5 text-xs font-semibold border border-border cursor-pointer"
+            title="Return to PlayLab"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">PlayLab</span>
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-bold font-display text-text-primary">
-                Math <span className="text-[#10B981]">Visualizer</span>
-              </h1>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <Compass className="w-3.5 h-3.5" />
-                Classes 1–10
+
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm sm:text-base font-bold font-display text-text-primary flex items-center gap-1.5">
+              <span>Math Visualizer</span>
+              <span className="text-xs text-text-muted font-normal font-sans hidden md:inline">
+                (FormulaLens Studio)
               </span>
-            </div>
-            <p className="text-xs text-text-muted">
-              Interactive number lines, fraction bars, geometric symmetry & function grapher
-            </p>
+            </h1>
+            <span className="badge-playlab text-[10px] hidden sm:inline">
+              NCERT Classes 6–12
+            </span>
+          </div>
+
+          {/* Preset Selector Dropdown */}
+          <div className="relative ml-1 sm:ml-2">
+            <button
+              type="button"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-text-primary hover:bg-canvas transition-colors cursor-pointer shadow-xs"
+            >
+              <span className="text-text-muted font-normal hidden sm:inline">Formula:</span>
+              <span className="truncate max-w-[140px] sm:max-w-[180px]">
+                {currentPreset ? currentPreset.name : 'Custom Formula'}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
+            </button>
+
+            {dropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setDropdownOpen(false)}
+                />
+                <div className="absolute left-0 mt-1.5 w-72 sm:w-80 rounded-2xl border border-border bg-card p-2.5 shadow-xl z-50 max-h-[460px] overflow-y-auto">
+                  <div className="mb-2 px-1 relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-text-muted" />
+                    <input
+                      type="text"
+                      placeholder="Search formulas or concepts..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full rounded-xl border border-border bg-canvas pl-8 pr-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-hidden"
+                      autoFocus
+                    />
+                  </div>
+
+                  {CATEGORIES.map((cat) => {
+                    const presetsInCat = filteredPresets.filter((p) => p.category === cat);
+                    if (presetsInCat.length === 0) return null;
+                    return (
+                      <div key={cat} className="mb-2">
+                        <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-text-muted border-b border-border/70">
+                          {cat}
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {presetsInCat.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                handleSelectPreset(preset);
+                                setDropdownOpen(false);
+                                setSearchQuery('');
+                              }}
+                              className={`w-full text-left px-2 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                                currentPreset?.id === preset.id
+                                  ? 'bg-primary/10 text-primary font-bold'
+                                  : 'text-text-primary hover:bg-canvas'
+                              }`}
+                            >
+                              <span className="truncate">{preset.name}</span>
+                              <span className="text-[10px] text-text-muted font-mono ml-2 shrink-0">
+                                {preset.expression.length > 15
+                                  ? preset.expression.slice(0, 15) + '…'
+                                  : preset.expression}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {filteredPresets.length === 0 && (
+                    <div className="px-3 py-4 text-center text-xs text-text-muted">
+                      No matching formulas found.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Visualizer Mode Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none bg-card border border-border rounded-2xl p-2 shadow-soft">
-        {[
-          { id: 'numberline', label: 'Number Line & Arithmetic', icon: Hash, grades: 'Classes 1–4' },
-          { id: 'fractions', label: 'Fraction Bars & Comparison', icon: Divide, grades: 'Classes 3–6' },
-          { id: 'geometry', label: 'Geometry & Symmetry', icon: Shapes, grades: 'Classes 5–8' },
-          { id: 'grapher', label: 'Coordinate Grapher', icon: LineChart, grades: 'Classes 8–10' },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+        {/* Right: View Mode Tabs & Share Button */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* View Mode Pills */}
+          <div className="flex items-center rounded-xl border border-border bg-canvas p-0.5 text-xs font-semibold text-text-muted">
             <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id as VisualizerTab);
-                addXP(5);
-              }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
-                isActive
-                  ? 'bg-[#10B981] text-white shadow-sm'
-                  : 'text-text-muted hover:text-text-primary hover:bg-black/5 dark:hover:bg-white/5'
+              type="button"
+              onClick={() => setViewMode('2d')}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                viewMode === '2d'
+                  ? 'bg-card text-text-primary shadow-xs font-bold'
+                  : 'hover:text-text-primary'
               }`}
+              title="2D Coordinate Plotter"
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-md ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-black/5 dark:bg-white/5 text-text-muted'
-                }`}
-              >
-                {tab.grades}
-              </span>
+              <Layers className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden md:inline">2D Plot</span>
             </button>
-          );
-        })}
-      </div>
 
-      {/* Main Interactive Workspaces */}
-      <div className="bg-card border border-border rounded-3xl p-6 sm:p-8 shadow-soft">
-        {/* ========================================== */}
-        {/* 1. NUMBER LINE WORKSPACE */}
-        {/* ========================================== */}
-        {activeTab === 'numberline' && (
-          <div className="space-y-8 max-w-4xl mx-auto">
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold font-display text-text-primary">
-                Interactive Dynamic Number Line
-              </h2>
-              <p className="text-xs text-text-muted">
-                Visualize mathematical addition and subtraction as vector jumps along the line
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('calculus');
+                setCalculusState((prev) => ({ ...prev, enabled: true }));
+              }}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'calculus'
+                  ? 'bg-card text-text-primary shadow-xs font-bold'
+                  : 'hover:text-text-primary'
+              }`}
+              title="Calculus Tangent & Derivative Analysis"
+            >
+              <Compass className="w-3.5 h-3.5 text-cyan-500" />
+              <span className="hidden md:inline">Calculus</span>
+            </button>
 
-            {/* Arithmetic Formula Display */}
-            <div className="text-center">
-              <div className="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-canvas border border-border text-2xl font-black font-mono text-text-primary shadow-sm">
-                <span className="text-blue-500">{nlStart}</span>
-                <span className="text-text-muted">{nlOperation === 'add' ? '+' : '−'}</span>
-                <span className="text-emerald-500">{nlJump}</span>
-                <span className="text-text-muted">=</span>
-                <span className="text-[#10B981] underline decoration-wavy underline-offset-4">
-                  {nlResult}
-                </span>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setViewMode('comparison')}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'comparison'
+                  ? 'bg-card text-text-primary shadow-xs font-bold'
+                  : 'hover:text-text-primary'
+              }`}
+              title="Dual Function Comparison & Residual Error"
+            >
+              <GitCompare className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden md:inline">Compare</span>
+            </button>
 
-            {/* Interactive SVG Number Line Canvas */}
-            <div className="w-full overflow-x-auto p-4 bg-canvas rounded-2xl border border-border">
-              <svg viewBox="0 0 800 220" className="w-full min-w-[700px] h-52">
-                {/* Horizontal Axis */}
-                <line x1="50" y1="140" x2="750" y2="140" stroke="#94A3B8" strokeWidth="3" />
-                <polygon points="760,140 745,133 745,147" fill="#94A3B8" />
-                <polygon points="40,140 55,133 55,147" fill="#94A3B8" />
+            <button
+              type="button"
+              onClick={() => setViewMode('3d')}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                viewMode === '3d'
+                  ? 'bg-card text-text-primary shadow-xs font-bold'
+                  : 'hover:text-text-primary'
+              }`}
+              title="Interactive 3D WebGL Parametric Surface"
+            >
+              <Box className="w-3.5 h-3.5 text-purple-500" />
+              <span className="hidden md:inline">3D Surface</span>
+            </button>
 
-                {/* Ticks and Numbers from -5 to 15 (offset = 5) */}
-                {Array.from({ length: 21 }).map((_, i) => {
-                  const val = i - 5;
-                  const x = 70 + i * 33;
-                  const isZero = val === 0;
-                  const isStart = val === nlStart;
-                  const isEnd = val === nlResult;
-
-                  return (
-                    <g key={i}>
-                      <line
-                        x1={x}
-                        y1={isZero ? 125 : 133}
-                        x2={x}
-                        y2={isZero ? 155 : 147}
-                        stroke={isZero ? '#10B981' : '#64748B'}
-                        strokeWidth={isZero ? 3 : 1.5}
-                      />
-                      <text
-                        x={x}
-                        y="172"
-                        textAnchor="middle"
-                        fontSize={isZero ? '14' : '12'}
-                        fontWeight={isZero || isStart || isEnd ? 'bold' : 'normal'}
-                        fill={isStart ? '#3B82F6' : isEnd ? '#10B981' : isZero ? '#10B981' : '#94A3B8'}
-                      >
-                        {val}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Jump Arc */}
-                {(() => {
-                  const xStart = 70 + (nlStart + 5) * 33;
-                  const xEnd = 70 + (nlResult + 5) * 33;
-                  const midX = (xStart + xEnd) / 2;
-                  const arcHeight = Math.min(100, Math.max(40, Math.abs(nlJump) * 12));
-                  const pathD = `M ${xStart} 135 Q ${midX} ${135 - arcHeight} ${xEnd} 135`;
-
-                  return (
-                    <g>
-                      <path
-                        d={pathD}
-                        fill="none"
-                        stroke="#10B981"
-                        strokeWidth="3.5"
-                        strokeDasharray="6 3"
-                      />
-                      {/* Destination Circle */}
-                      <circle cx={xEnd} cy="135" r="7" fill="#10B981" />
-                      {/* Origin Circle */}
-                      <circle cx={xStart} cy="135" r="6" fill="#3B82F6" />
-                      {/* Jump Label */}
-                      <text
-                        x={midX}
-                        y={130 - arcHeight}
-                        textAnchor="middle"
-                        fontSize="13"
-                        fontWeight="bold"
-                        fill="#10B981"
-                      >
-                        {nlOperation === 'add' ? `+${nlJump}` : `−${nlJump}`}
-                      </text>
-                    </g>
-                  );
-                })()}
-              </svg>
-            </div>
-
-            {/* Slider Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2">
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Starting Number</span>
-                  <span className="font-mono text-blue-500">{nlStart}</span>
-                </div>
-                <input
-                  type="range"
-                  min="-3"
-                  max="10"
-                  value={nlStart}
-                  onChange={(e) => setNlStart(parseInt(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Jump Magnitude</span>
-                  <span className="font-mono text-emerald-500">{nlJump}</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="8"
-                  value={nlJump}
-                  onChange={(e) => setNlJump(parseInt(e.target.value))}
-                  className="w-full accent-emerald-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <span className="text-xs font-semibold text-text-primary block">Operation</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setNlOperation('add')}
-                    className={`py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                      nlOperation === 'add'
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-card border border-border text-text-muted'
-                    }`}
-                  >
-                    + Addition
-                  </button>
-                  <button
-                    onClick={() => setNlOperation('subtract')}
-                    className={`py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                      nlOperation === 'subtract'
-                        ? 'bg-rose-500 text-white'
-                        : 'bg-card border border-border text-text-muted'
-                    }`}
-                  >
-                    − Subtraction
-                  </button>
-                </div>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setViewMode('matrix')}
+              className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'matrix'
+                  ? 'bg-card text-text-primary shadow-xs font-bold'
+                  : 'hover:text-text-primary'
+              }`}
+              title="2x2 Matrix Linear Transformation & Warping"
+            >
+              <Grid className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden md:inline">Matrix</span>
+            </button>
           </div>
-        )}
 
-        {/* ========================================== */}
-        {/* 2. FRACTION BARS WORKSPACE */}
-        {/* ========================================== */}
-        {activeTab === 'fractions' && (
-          <div className="space-y-8 max-w-4xl mx-auto">
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold font-display text-text-primary">
-                Fraction Bars & Equivalence Explorer
-              </h2>
-              <p className="text-xs text-text-muted">
-                Directly compare fraction lengths and observe equivalent slices side-by-side
-              </p>
-            </div>
+          {/* Reset Parameters Button */}
+          <button
+            type="button"
+            onClick={handleResetParameters}
+            title="Reset parameters to defaults"
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-border bg-card hover:bg-canvas text-xs text-text-muted hover:text-text-primary transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline text-[11px] font-semibold">Reset</span>
+          </button>
 
-            {/* Fraction Comparer Readout */}
-            <div className="text-center">
-              <div className="inline-flex items-center gap-4 px-6 py-3 rounded-2xl bg-canvas border border-border shadow-sm text-xl font-bold font-mono">
-                <span className="text-blue-500">
-                  {num1}/{den1} ({(num1 / den1).toFixed(2)})
-                </span>
-                <span className="text-text-muted font-normal text-sm">
-                  {num1 / den1 > num2 / den2 ? '>' : num1 / den1 < num2 / den2 ? '<' : '='}
-                </span>
-                <span className="text-amber-500">
-                  {num2}/{den2} ({(num2 / den2).toFixed(2)})
-                </span>
-              </div>
-            </div>
+          {/* Share Button */}
+          <button
+            type="button"
+            onClick={handleShare}
+            title="Share URL with current formula and parameters"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-canvas text-xs font-bold text-text-primary transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            {shareCopied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5 text-primary" />
+                <span className="hidden sm:inline">Share</span>
+              </>
+            )}
+          </button>
+        </div>
+      </header>
 
-            {/* Visual Bars Container */}
-            <div className="space-y-6 bg-canvas p-6 rounded-2xl border border-border">
-              {/* Bar 1 */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Fraction A: {num1}/{den1}</span>
-                  <span className="text-blue-500 font-mono">{((num1 / den1) * 100).toFixed(0)}% of Whole</span>
-                </div>
-                <div className="flex h-12 rounded-xl overflow-hidden border-2 border-blue-500/40 bg-card">
-                  {Array.from({ length: den1 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`flex-1 border-r border-border last:border-r-0 flex items-center justify-center text-xs font-bold transition-all ${
-                        i < num1
-                          ? 'bg-blue-500 text-white shadow-inner'
-                          : 'bg-card text-text-muted/40'
-                      }`}
-                    >
-                      1/{den1}
-                    </div>
-                  ))}
-                </div>
-              </div>
+      {/* 2. MAIN WORKBENCH LAYOUT (Left Column ~35%, Right Plotting Canvas ~65%) */}
+      <main className="flex-1 min-h-0 overflow-hidden flex flex-col p-2 sm:p-3 xl:p-4 max-w-[1800px] w-full mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 xl:gap-4 items-start h-full min-h-0 overflow-hidden">
+          
+          {/* Left Column (~35%): Formula Hero, Sliders, Calculus/Comparison panels, Term Breakdown */}
+          <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-2.5 h-full min-h-0 overflow-y-auto pr-1">
+            {/* KaTeX Chalkboard Hero Formula with Inline Equation Editor */}
+            <FormulaHero
+              expression={expression}
+              latex={
+                currentPreset && currentPreset.expression === expression
+                  ? currentPreset.latex
+                  : parseResult.latex
+              }
+              error={parseResult.error}
+              onChangeExpression={(newExpr) => {
+                setExpression(newExpr);
+                if (currentPreset && newExpr !== currentPreset.expression) {
+                  setCurrentPreset(null);
+                }
+              }}
+              presetName={currentPreset?.name}
+              selectedTerm={selectedTerm}
+              onSelectTerm={setSelectedTerm}
+            />
 
-              {/* Bar 2 */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Fraction B: {num2}/{den2}</span>
-                  <span className="text-amber-500 font-mono">{((num2 / den2) * 100).toFixed(0)}% of Whole</span>
-                </div>
-                <div className="flex h-12 rounded-xl overflow-hidden border-2 border-amber-500/40 bg-card">
-                  {Array.from({ length: den2 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`flex-1 border-r border-border last:border-r-0 flex items-center justify-center text-xs font-bold transition-all ${
-                        i < num2
-                          ? 'bg-amber-500 text-white shadow-inner'
-                          : 'bg-card text-text-muted/40'
-                      }`}
-                    >
-                      1/{den2}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            {/* Calculus Tangent & Derivative Controls */}
+            {viewMode === 'calculus' && (
+              <CalculusPanel
+                calculusState={calculusState}
+                onChangeCalculusState={setCalculusState}
+                xRange={xRangeDefault}
+                currentY0={tangentY0}
+                currentSlope={tangentSlope}
+              />
+            )}
 
-            {/* Fraction Sliders */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="p-4 rounded-2xl bg-canvas border border-border space-y-3">
-                <h4 className="font-bold text-xs text-blue-500">Configure Fraction A</h4>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-text-muted">
-                    <span>Numerator (Parts selected): {num1}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max={den1}
-                    value={num1}
-                    onChange={(e) => setNum1(parseInt(e.target.value))}
-                    className="w-full accent-blue-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-text-muted">
-                    <span>Denominator (Total equal parts): {den1}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="2"
-                    max="12"
-                    value={den1}
-                    onChange={(e) => {
-                      const d = parseInt(e.target.value);
-                      setDen1(d);
-                      if (num1 > d) setNum1(d);
-                    }}
-                    className="w-full accent-blue-500"
-                  />
-                </div>
-              </div>
+            {/* Comparison Overlay Controls & RMSE Residual Analysis */}
+            {viewMode === 'comparison' && (
+              <ComparisonPanel
+                comparisonState={comparisonState}
+                onChangeComparisonState={setComparisonState}
+                primaryExpression={expression}
+                maxResidual={maxResidual}
+                rmsError={rmsError}
+              />
+            )}
 
-              <div className="p-4 rounded-2xl bg-canvas border border-border space-y-3">
-                <h4 className="font-bold text-xs text-amber-500">Configure Fraction B</h4>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-text-muted">
-                    <span>Numerator (Parts selected): {num2}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max={den2}
-                    value={num2}
-                    onChange={(e) => setNum2(parseInt(e.target.value))}
-                    className="w-full accent-amber-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-text-muted">
-                    <span>Denominator (Total equal parts): {den2}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="2"
-                    max="12"
-                    value={den2}
-                    onChange={(e) => {
-                      const d = parseInt(e.target.value);
-                      setDen2(d);
-                      if (num2 > d) setNum2(d);
-                    }}
-                    className="w-full accent-amber-500"
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Reactive Parameter Sliders (Auto-detected from AST) */}
+            <ParameterSliders
+              parameters={parameters}
+              onChangeParameter={handleChangeParameter}
+              selectedTerm={selectedTerm}
+            />
+
+            {/* Click-to-explain Term Breakdown */}
+            {currentPreset?.termBreakdowns && (
+              <TermBreakdown
+                terms={currentPreset.termBreakdowns}
+                selectedTerm={selectedTerm}
+                onSelectTerm={setSelectedTerm}
+              />
+            )}
           </div>
-        )}
 
-        {/* ========================================== */}
-        {/* 3. GEOMETRY & SYMMETRY WORKSPACE */}
-        {/* ========================================== */}
-        {activeTab === 'geometry' && (
-          <div className="space-y-8 max-w-4xl mx-auto">
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold font-display text-text-primary">
-                Regular Polygons, Angles & Symmetry
-              </h2>
-              <p className="text-xs text-text-muted">
-                Explore internal angles, perimeter, and lines of reflectional symmetry
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              {/* SVG Canvas */}
-              <div className="p-6 bg-canvas rounded-2xl border border-border flex items-center justify-center">
-                <svg viewBox="0 0 360 320" className="w-full max-w-[320px] h-72">
-                  {/* Lines of Symmetry */}
-                  {showSymmetry &&
-                    Array.from({ length: polygonSides }).map((_, i) => {
-                      const angle = (i * Math.PI) / polygonSides - Math.PI / 2;
-                      const x1 = 180 + 130 * Math.cos(angle);
-                      const y1 = 160 + 130 * Math.sin(angle);
-                      const x2 = 180 - 130 * Math.cos(angle);
-                      const y2 = 160 - 130 * Math.sin(angle);
-                      return (
-                        <line
-                          key={i}
-                          x1={x1}
-                          y1={y1}
-                          x2={x2}
-                          y2={y2}
-                          stroke="#EC4899"
-                          strokeWidth="1.5"
-                          strokeDasharray="4 4"
-                          opacity="0.6"
-                        />
-                      );
-                    })}
-
-                  {/* Polygon Shape */}
-                  <polygon
-                    points={polyPointsStr}
-                    fill="rgba(16, 185, 129, 0.2)"
-                    stroke="#10B981"
-                    strokeWidth="3.5"
-                  />
-
-                  {/* Vertices */}
-                  {polyPoints.map((p, i) => (
-                    <circle key={i} cx={p.x} cy={p.y} r="5" fill="#10B981" />
-                  ))}
-
-                  {/* Center Dot */}
-                  <circle cx="180" cy="160" r="4" fill="#3B82F6" />
-                </svg>
-              </div>
-
-              {/* Geometric Calculations Dossier */}
-              <div className="space-y-4">
-                <div className="p-5 rounded-2xl bg-canvas border border-border space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-text-muted">Shape Type:</span>
-                    <span className="text-sm font-bold text-text-primary capitalize">
-                      {polygonSides === 3
-                        ? 'Equilateral Triangle'
-                        : polygonSides === 4
-                        ? 'Square'
-                        : polygonSides === 5
-                        ? 'Regular Pentagon'
-                        : polygonSides === 6
-                        ? 'Regular Hexagon'
-                        : `${polygonSides}-sided Polygon`}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-muted">Interior Angle:</span>
-                    <span className="font-mono font-bold text-emerald-500">
-                      {interiorAngle.toFixed(1)}°
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-muted">Lines of Symmetry:</span>
-                    <span className="font-mono font-bold text-pink-500">{polygonSides} lines</span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-muted">Calculated Perimeter:</span>
-                    <span className="font-mono font-bold text-blue-500">
-                      {perimeter.toFixed(1)} px
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-text-muted">Calculated Area:</span>
-                    <span className="font-mono font-bold text-amber-500">
-                      {area.toFixed(0)} px²
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sides Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-semibold text-text-primary">
-                    <span>Number of Sides (n)</span>
-                    <span className="font-mono text-emerald-500">{polygonSides}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="3"
-                    max="10"
-                    value={polygonSides}
-                    onChange={(e) => setPolygonSides(parseInt(e.target.value))}
-                    className="w-full accent-emerald-500"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="symmToggle"
-                    checked={showSymmetry}
-                    onChange={(e) => setShowSymmetry(e.target.checked)}
-                    className="rounded text-pink-500"
-                  />
-                  <label htmlFor="symmToggle" className="text-xs font-semibold text-text-primary cursor-pointer">
-                    Show Lines of Symmetry (Pink dashed)
-                  </label>
-                </div>
-              </div>
-            </div>
+          {/* Right Column (~65%): Dominant Interactive Plotting Canvas (SVG 2D, Three.js 3D, or Matrix Warper) */}
+          <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-full min-h-[440px] rounded-2xl border border-border bg-card overflow-hidden shadow-xs relative">
+            {viewMode === '3d' ? (
+              <Surface3D
+                compiledFormula={parseResult.compiled}
+                parameters={parameters}
+                expression={expression}
+              />
+            ) : viewMode === 'matrix' ? (
+              <MatrixTransformVisualizer
+                matrix={matrixState}
+                onChangeMatrix={setMatrixState}
+              />
+            ) : (
+              <Plot2D
+                primaryData={primaryPlotData}
+                secondaryData={viewMode === 'comparison' ? secondaryPlotData : null}
+                calculusState={viewMode === 'calculus' ? calculusState : undefined}
+                onUpdateX0={(newX0) => setCalculusState((prev) => ({ ...prev, x0: newX0 }))}
+                tangentSlope={tangentSlope}
+                tangentY0={tangentY0}
+                xRangeDefault={xRangeDefault}
+                yRangeDefault={yRangeDefault}
+                formulaKey={formulaAnimationKey}
+              />
+            )}
           </div>
-        )}
 
-        {/* ========================================== */}
-        {/* 4. COORDINATE GRAPHER WORKSPACE */}
-        {/* ========================================== */}
-        {activeTab === 'grapher' && (
-          <div className="space-y-8 max-w-4xl mx-auto">
-            <div className="text-center space-y-1">
-              <h2 className="text-xl font-bold font-display text-text-primary">
-                Cartesian Coordinate Plane & Function Grapher
-              </h2>
-              <p className="text-xs text-text-muted">
-                Observe how slope (m) and intercept (c) transform linear equations in real time
-              </p>
-            </div>
-
-            {/* Formula Readout */}
-            <div className="text-center">
-              <div className="inline-flex items-center gap-3 px-6 py-2.5 rounded-2xl bg-canvas border border-border text-xl font-bold font-mono text-[#10B981] shadow-sm">
-                y = {slopeM}x {interceptC >= 0 ? `+ ${interceptC}` : `− ${Math.abs(interceptC)}`}
-              </div>
-            </div>
-
-            {/* Cartesian Canvas */}
-            <div className="w-full overflow-x-auto p-4 bg-slate-950 rounded-2xl border border-slate-800 flex justify-center">
-              <svg viewBox="-200 -200 400 400" className="w-[380px] h-[380px]">
-                {/* Grid Lines */}
-                {Array.from({ length: 9 }).map((_, i) => {
-                  const coord = (i - 4) * 40;
-                  return (
-                    <g key={i}>
-                      <line x1={coord} y1="-180" x2={coord} y2="180" stroke="#334155" strokeWidth="1" />
-                      <line x1="-180" y1={coord} x2="180" y2={coord} stroke="#334155" strokeWidth="1" />
-                    </g>
-                  );
-                })}
-
-                {/* X and Y Axes */}
-                <line x1="-190" y1="0" x2="190" y2="0" stroke="#94A3B8" strokeWidth="2" />
-                <line x1="0" y1="-190" x2="0" y2="190" stroke="#94A3B8" strokeWidth="2" />
-                <text x="180" y="-8" fill="#94A3B8" fontSize="11" fontWeight="bold">X</text>
-                <text x="8" y="-180" fill="#94A3B8" fontSize="11" fontWeight="bold">Y</text>
-
-                {/* Linear Function Line: y = mx + c. In SVG, Y is inverted so svgY = -(y * 40) */}
-                {(() => {
-                  const x1 = -4.5;
-                  const y1 = slopeM * x1 + interceptC;
-                  const x2 = 4.5;
-                  const y2 = slopeM * x2 + interceptC;
-
-                  const svgX1 = x1 * 40;
-                  const svgY1 = -y1 * 40;
-                  const svgX2 = x2 * 40;
-                  const svgY2 = -y2 * 40;
-
-                  return (
-                    <line
-                      x1={svgX1}
-                      y1={svgY1}
-                      x2={svgX2}
-                      y2={svgY2}
-                      stroke="#10B981"
-                      strokeWidth="3.5"
-                    />
-                  );
-                })()}
-
-                {/* Y-Intercept Dot */}
-                <circle cx="0" cy={-interceptC * 40} r="5" fill="#3B82F6" />
-              </svg>
-            </div>
-
-            {/* Sliders for m and c */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-1.5 p-4 rounded-2xl bg-canvas border border-border">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Slope (m) - Rate of Change</span>
-                  <span className="font-mono text-emerald-500">{slopeM}</span>
-                </div>
-                <input
-                  type="range"
-                  min="-3"
-                  max="3"
-                  step="0.5"
-                  value={slopeM}
-                  onChange={(e) => setSlopeM(parseFloat(e.target.value))}
-                  className="w-full accent-emerald-500"
-                />
-              </div>
-
-              <div className="space-y-1.5 p-4 rounded-2xl bg-canvas border border-border">
-                <div className="flex justify-between text-xs font-semibold text-text-primary">
-                  <span>Y-Intercept (c) - Origin Offset</span>
-                  <span className="font-mono text-blue-500">{interceptC}</span>
-                </div>
-                <input
-                  type="range"
-                  min="-3"
-                  max="3"
-                  step="0.5"
-                  value={interceptC}
-                  onChange={(e) => setInterceptC(parseFloat(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 };

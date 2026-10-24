@@ -20,6 +20,7 @@ export function AppShell() {
     location.pathname.startsWith('/playlab/solar') ||
     location.pathname.startsWith('/playlab/human-body') ||
     location.pathname.startsWith('/playlab/physics-playground') ||
+    location.pathname.startsWith('/playlab/math-visualizer') ||
     location.pathname.startsWith('/circuitverse') ||
     location.pathname.startsWith('/codeverse/challenge') ||
     location.pathname.startsWith('/codeverse/learn');
